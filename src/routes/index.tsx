@@ -5,6 +5,7 @@ import {
   Heart, MapPin, Calendar as CalendarIcon, Music, Utensils, Sparkles,
   Camera, Gift, Shirt, HelpCircle, Phone, Mail, Check, ChevronDown,
   ChevronRight, Send, Bot, User as UserIcon, Download, ExternalLink,
+  Plus, Trash2,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({ component: WeddingSite });
@@ -16,7 +17,6 @@ const CONFIG = {
   dateISO: "2026-10-10T14:00:00+02:00",
   dateHuman: "10.10.2026",
   city: "Brno, Česká republika",
-  // Nahraď reálnym endpointom (Formspree / Getform / Basin / Google Forms)
   formEndpoint: "https://formspree.io/f/your-endpoint",
   contacts: {
     natalia: { phone: "+421 900 000 000", email: "natalia@example.com" },
@@ -30,8 +30,59 @@ const CONFIG = {
   },
   qrPayment: "https://placehold.co/220x220/f5e9c8/3a1418?text=QR+platba",
   qrPhotos: "https://placehold.co/220x220/f5e9c8/3a1418?text=QR+fotky",
-  photoUploadUrl: "#", // Google Drive / WedUploader link
+  photoUploadUrl: "#",
+  // Trojica jedál na výber pre hostí
+  meals: [
+    { key: "meat", label: "Mäsové", emoji: "🥩" },
+    { key: "veg", label: "Vegetariánske", emoji: "🥗" },
+    { key: "fish", label: "Rybie", emoji: "🐟" },
+  ] as const,
+  // Cenník izieb (Kč / noc, vrátane raňajok)
+  rooms: [
+    { key: "single", label: "Jednolôžková", price: 1950 },
+    { key: "double", label: "Dvojlôžková DBL", price: 2500 },
+    { key: "twin", label: "Dvojlôžková TWIN", price: 2500 },
+  ] as const,
+  extras: {
+    extraBed: 600,   // prístelka
+    cot: 0,          // detská postieľka do 3r
+    pet: 500,        // pes / zviera
+    parking: 390,    // parkovanie / noc (info mimo formulára)
+  },
 };
+
+// ============ SHARED GUEST STORE (RSVP → Pokrm → Ubytovanie) ============
+type Guest = { id: string; name: string; attending: boolean };
+const GUEST_KEY = "no-wedding-guests-v1";
+
+function readGuests(): Guest[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(GUEST_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Guest[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
+function writeGuests(list: Guest[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(GUEST_KEY, JSON.stringify(list));
+  window.dispatchEvent(new CustomEvent("guests-updated"));
+}
+function useGuests(): Guest[] {
+  const [guests, setGuests] = useState<Guest[]>([]);
+  useEffect(() => {
+    setGuests(readGuests());
+    const h = () => setGuests(readGuests());
+    window.addEventListener("guests-updated", h);
+    window.addEventListener("storage", h);
+    return () => {
+      window.removeEventListener("guests-updated", h);
+      window.removeEventListener("storage", h);
+    };
+  }, []);
+  return guests;
+}
 
 // ============ CHECKLIST ============
 const SECTIONS = [
@@ -46,21 +97,27 @@ const SECTIONS = [
   { id: "fotky", label: "Zdieľaj s nami fotky", icon: Camera },
   { id: "kontakt", label: "Kontakt", icon: Phone },
 ];
+const CHECK_KEY = "no-wedding-checked-v1";
 
 function WeddingSite() {
-  const [visited, setVisited] = useState<Set<string>>(new Set(["hero"]));
+  const [checked, setChecked] = useState<Set<string>>(new Set());
   const [active, setActive] = useState<string>("hero");
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Load persisted checks
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CHECK_KEY);
+      if (raw) setChecked(new Set(JSON.parse(raw) as string[]));
+    } catch { /* noop */ }
+  }, []);
+
+  // Track active section (for highlight only, NOT auto-check)
   useEffect(() => {
     const obs = new IntersectionObserver(
       (entries) => {
         entries.forEach((e) => {
-          if (e.isIntersecting) {
-            const id = e.target.id;
-            setActive(id);
-            setVisited((prev) => new Set(prev).add(id));
-          }
+          if (e.isIntersecting) setActive(e.target.id);
         });
       },
       { rootMargin: "-40% 0px -50% 0px" }
@@ -77,20 +134,29 @@ function WeddingSite() {
     setMobileOpen(false);
   };
 
-  const progress = Math.round((visited.size / SECTIONS.length) * 100);
+  const toggleCheck = (id: string) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      try { window.localStorage.setItem(CHECK_KEY, JSON.stringify([...next])); } catch { /* noop */ }
+      return next;
+    });
+  };
+
+  const progress = Math.round((checked.size / SECTIONS.length) * 100);
 
   return (
     <div className="relative min-h-screen">
       <Toaster position="top-center" richColors />
       <PaperTexture />
 
-      {/* Mobile progress bar */}
       <MobileChecklist
         open={mobileOpen}
         onToggle={() => setMobileOpen((o) => !o)}
-        visited={visited}
+        checked={checked}
         active={active}
         onPick={scrollTo}
+        onToggleCheck={toggleCheck}
         progress={progress}
       />
 
@@ -110,8 +176,13 @@ function WeddingSite() {
         <Footer />
       </div>
 
-      {/* Desktop sidebar checklist */}
-      <DesktopChecklist visited={visited} active={active} onPick={scrollTo} progress={progress} />
+      <DesktopChecklist
+        checked={checked}
+        active={active}
+        onPick={scrollTo}
+        onToggleCheck={toggleCheck}
+        progress={progress}
+      />
     </div>
   );
 }
@@ -132,22 +203,25 @@ function PaperTexture() {
 
 // ============ CHECKLIST UI ============
 function ChecklistItem({
-  s, done, active, onPick, index,
+  s, done, active, onPick, onToggleCheck, index,
 }: {
   s: (typeof SECTIONS)[number];
   done: boolean; active: boolean; index: number;
   onPick: (id: string) => void;
+  onToggleCheck: (id: string) => void;
 }) {
   return (
-    <button
-      onClick={() => onPick(s.id)}
+    <div
       className={`group flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors ${
         active ? "bg-[color:var(--gold)]/15" : "hover:bg-[color:var(--ink)]/5"
       }`}
     >
-      <span
-        className={`grid h-6 w-6 shrink-0 place-items-center rounded border-2 ${
-          done ? "border-[color:var(--turquoise)] bg-[color:var(--turquoise)]/20" : "border-[color:var(--ink)]/40"
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onToggleCheck(s.id); }}
+        aria-label={done ? `Odčiarknuť ${s.label}` : `Označiť ${s.label} ako hotové`}
+        className={`grid h-6 w-6 shrink-0 place-items-center rounded border-2 transition ${
+          done ? "border-[color:var(--turquoise)] bg-[color:var(--turquoise)]/20" : "border-[color:var(--ink)]/40 hover:border-[color:var(--bordo)]"
         }`}
         style={{ transform: done ? "rotate(-3deg)" : "none" }}
       >
@@ -156,21 +230,27 @@ function ChecklistItem({
             <path d="M3 11 L8 15 L17 4" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         )}
-      </span>
-      <span className="font-hand text-lg leading-tight text-[color:var(--ink)]" style={{ textDecoration: done ? "line-through" : "none" }}>
+      </button>
+      <button
+        type="button"
+        onClick={() => onPick(s.id)}
+        className="flex-1 text-left font-hand text-lg leading-tight text-[color:var(--ink)]"
+        style={{ textDecoration: done ? "line-through" : "none" }}
+      >
         <span className="opacity-50 mr-1">{String(index + 1).padStart(2, "0")}.</span>
         {s.label}
-      </span>
+      </button>
       {active && <ChevronRight className="ml-auto h-4 w-4 text-[color:var(--bordo)]" />}
-    </button>
+    </div>
   );
 }
 
 function DesktopChecklist({
-  visited, active, onPick, progress,
+  checked, active, onPick, onToggleCheck, progress,
 }: {
-  visited: Set<string>; active: string; progress: number;
+  checked: Set<string>; active: string; progress: number;
   onPick: (id: string) => void;
+  onToggleCheck: (id: string) => void;
 }) {
   return (
     <aside className="fixed right-6 top-6 bottom-6 z-30 hidden w-[320px] lg:block">
@@ -181,17 +261,15 @@ function DesktopChecklist({
           <span className="font-hand text-xl text-[color:var(--ink)]/70">{progress}%</span>
         </div>
         <div className="mb-3 h-2 overflow-hidden rounded-full bg-[color:var(--ink)]/10">
-          <div
-            className="h-full rounded-full bg-[color:var(--turquoise)] transition-all"
-            style={{ width: `${progress}%` }}
-          />
+          <div className="h-full rounded-full bg-[color:var(--turquoise)] transition-all" style={{ width: `${progress}%` }} />
         </div>
-        <div className="space-y-0.5 overflow-y-auto pr-1" style={{ maxHeight: "calc(100% - 100px)" }}>
+        <p className="mb-2 font-hand text-xs text-[color:var(--ink)]/60">Odčiarkni si sám, keď máš hotovo ✍️</p>
+        <div className="space-y-0.5 overflow-y-auto pr-1" style={{ maxHeight: "calc(100% - 120px)" }}>
           {SECTIONS.map((s, i) => (
             <ChecklistItem
               key={s.id} s={s} index={i}
-              done={visited.has(s.id)} active={active === s.id}
-              onPick={onPick}
+              done={checked.has(s.id)} active={active === s.id}
+              onPick={onPick} onToggleCheck={onToggleCheck}
             />
           ))}
         </div>
@@ -201,11 +279,12 @@ function DesktopChecklist({
 }
 
 function MobileChecklist({
-  open, onToggle, visited, active, onPick, progress,
+  open, onToggle, checked, active, onPick, onToggleCheck, progress,
 }: {
   open: boolean; onToggle: () => void;
-  visited: Set<string>; active: string; progress: number;
+  checked: Set<string>; active: string; progress: number;
   onPick: (id: string) => void;
+  onToggleCheck: (id: string) => void;
 }) {
   return (
     <div className="fixed inset-x-0 top-0 z-40 lg:hidden">
@@ -225,8 +304,8 @@ function MobileChecklist({
           {SECTIONS.map((s, i) => (
             <ChecklistItem
               key={s.id} s={s} index={i}
-              done={visited.has(s.id)} active={active === s.id}
-              onPick={onPick}
+              done={checked.has(s.id)} active={active === s.id}
+              onPick={onPick} onToggleCheck={onToggleCheck}
             />
           ))}
         </div>
@@ -258,8 +337,10 @@ function Section({
 // ============ HERO ============
 function useCountdown(iso: string) {
   const target = useMemo(() => new Date(iso).getTime(), [iso]);
-  const [now, setNow] = useState(() => Date.now());
+  // Start with 0-diff (matches SSR) and update in effect to avoid hydration mismatch
+  const [now, setNow] = useState<number>(target);
   useEffect(() => {
+    setNow(Date.now());
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
@@ -270,6 +351,12 @@ function useCountdown(iso: string) {
   const seconds = Math.floor((diff % 60000) / 1000);
   return { days, hours, minutes, seconds };
 }
+
+const GCAL_URL =
+  "https://calendar.google.com/calendar/render?action=TEMPLATE" +
+  "&text=Svadba+Nat%C3%A1lia+%26+Oto" +
+  "&dates=20261010T120000Z/20261011T000000Z" +
+  "&location=Brno&details=Co-op+quest";
 
 function downloadIcs() {
   const ics = [
@@ -292,6 +379,40 @@ function downloadIcs() {
   const a = document.createElement("a");
   a.href = url; a.download = "svadba-natalia-oto.ics"; a.click();
   URL.revokeObjectURL(url);
+}
+
+function AddToCalendar() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative mt-4">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="inline-flex w-full items-center justify-center gap-2 rounded-full border-2 border-dashed border-[color:var(--bordo)] px-4 py-2 font-marker text-xs uppercase tracking-wide text-[color:var(--bordo)] hover:bg-[color:var(--bordo)]/10 transition"
+      >
+        <Download className="h-4 w-4" /> Pridať do kalendára
+        <ChevronDown className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="mt-2 space-y-1.5 rounded-md border border-dashed border-[color:var(--ink)]/30 bg-white/60 p-2">
+          <a
+            href={GCAL_URL} target="_blank" rel="noreferrer"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 rounded px-2 py-1.5 font-hand text-base text-[color:var(--ink)] hover:bg-[color:var(--gold)]/20"
+          >
+            <span aria-hidden>📅</span> Google Calendar
+          </a>
+          <button
+            type="button"
+            onClick={() => { downloadIcs(); setOpen(false); }}
+            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left font-hand text-base text-[color:var(--ink)] hover:bg-[color:var(--gold)]/20"
+          >
+            <span aria-hidden>🍎</span> Apple / Outlook (.ics)
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function HeroSection() {
@@ -326,24 +447,12 @@ function HeroSection() {
             >
               <Heart className="h-4 w-4" /> Potvrdzujem účasť
             </a>
-            <button
-              onClick={downloadIcs}
-              className="inline-flex items-center gap-2 rounded-full border-2 border-dashed border-[color:var(--turquoise)] px-6 py-3 font-hand text-lg text-[color:var(--turquoise)] hover:bg-[color:var(--turquoise)]/10 transition"
-            >
-              <Download className="h-4 w-4" /> Pridať do kalendára
-            </button>
             <a
               href="#program"
               className="inline-flex items-center gap-2 rounded-full border-2 border-dashed border-[color:var(--blush)] px-6 py-3 font-hand text-lg text-[color:var(--blush)] hover:bg-[color:var(--blush)]/10 transition"
             >
               <MapPin className="h-4 w-4" /> Pozrieť program
             </a>
-          </div>
-
-          <div className="mt-6 flex flex-wrap gap-2 text-sm">
-            <a className="underline text-[color:var(--paper)]/70 hover:text-[color:var(--gold)]" target="_blank" rel="noreferrer" href={`https://calendar.google.com/calendar/render?action=TEMPLATE&text=Svadba+Nat%C3%A1lia+%26+Oto&dates=20261010T120000Z/20261011T000000Z&location=Brno&details=Co-op+quest`}>Google Calendar</a>
-            <span className="text-[color:var(--paper)]/40">·</span>
-            <button onClick={downloadIcs} className="underline text-[color:var(--paper)]/70 hover:text-[color:var(--gold)]">Apple / Outlook (.ics)</button>
           </div>
         </div>
 
@@ -361,6 +470,7 @@ function HeroSection() {
               <p className="mt-2 font-hand text-xl text-[color:var(--ink)]/70">{CONFIG.city}</p>
             </div>
             <MiniCalendar />
+            <AddToCalendar />
           </div>
         </div>
       </div>
@@ -385,7 +495,6 @@ function HeroSection() {
 }
 
 function MiniCalendar() {
-  // October 2026: 1st = Thursday
   const startDay = 4; // Thu (Mon=1)
   const days = 31;
   const cells: (number | null)[] = [];
@@ -503,7 +612,6 @@ function LokacieSection() {
 
 // ============ FORM UTILITIES ============
 async function submitForm(formName: string, data: Record<string, unknown>) {
-  // Honeypot
   if ((data as { hp?: string }).hp) return { ok: true };
   try {
     const res = await fetch(CONFIG.formEndpoint, {
@@ -517,29 +625,51 @@ async function submitForm(formName: string, data: Record<string, unknown>) {
   }
 }
 
+function makeId() {
+  return `g_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 // ============ RSVP ============
 function RsvpSection() {
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [attending, setAttending] = useState("yes");
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [attending, setAttending] = useState<"yes" | "no">("yes");
+  // Additional guests only when main attending = yes
+  const [extras, setExtras] = useState<{ id: string; name: string; attending: boolean }[]>([]);
+
+  function addExtra() {
+    setExtras((p) => [...p, { id: makeId(), name: "", attending: true }]);
+  }
+  function removeExtra(id: string) {
+    setExtras((p) => p.filter((e) => e.id !== id));
+  }
+  function updateExtra(id: string, patch: Partial<{ name: string; attending: boolean }>) {
+    setExtras((p) => p.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const data = Object.fromEntries(fd.entries());
-    if (!data.name || !data.email) {
-      toast.error("Vyplň prosím meno a e-mail.");
-      return;
-    }
+    if (!name.trim()) { toast.error("Vyplň prosím meno."); return; }
+    if (!phone.trim()) { toast.error("Vyplň prosím telefón."); return; }
+
+    // Store guest list (main + extras that are attending)
+    const list: Guest[] = [];
+    list.push({ id: "main", name: name.trim(), attending: attending === "yes" });
+    extras.forEach((e) => {
+      if (e.name.trim()) list.push({ id: e.id, name: e.name.trim(), attending: e.attending });
+    });
+    writeGuests(list);
+
     setLoading(true);
-    const r = await submitForm("rsvp", data);
+    const r = await submitForm("rsvp", {
+      name, phone, attending,
+      guests: list,
+    });
     setLoading(false);
-    if (r.ok) {
-      setSent(true);
-      toast.success("Quest completed! RSVP odoslané ✨");
-    } else {
-      toast.error("Nepodarilo sa odoslať. Skús to znova alebo nám napíš.");
-    }
+    if (r.ok) { setSent(true); toast.success("Quest completed! RSVP odoslané ✨"); }
+    else toast.error("Nepodarilo sa odoslať. Skús to znova alebo nám napíš.");
   }
 
   if (sent) {
@@ -566,35 +696,102 @@ function RsvpSection() {
       <form onSubmit={onSubmit} className="paper-card p-6 md:p-8 space-y-5">
         <input type="text" name="hp" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden />
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Meno a priezvisko *" name="name" required />
-          <Field label="E-mail *" name="email" type="email" required />
-          <Field label="Telefón" name="phone" type="tel" />
           <div>
-            <label className="font-marker text-xs uppercase tracking-wider text-[color:var(--bordo)]">Prídeš?</label>
-            <select
-              name="attending" value={attending} onChange={(e) => setAttending(e.target.value)}
-              className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)]"
-            >
-              <option value="yes">Áno, prídem</option>
-              <option value="no">Nie, žiaľ neprídem</option>
-              <option value="maybe">Ešte neviem</option>
-            </select>
+            <label className="font-marker text-xs uppercase tracking-wider text-[color:var(--bordo)]">Meno a priezvisko *</label>
+            <input
+              value={name} onChange={(e) => setName(e.target.value)} required
+              className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)] placeholder:text-[color:var(--ink)]/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
+            />
           </div>
-          <Field label="Počet osôb" name="guests" type="number" defaultValue="1" min="1" />
-          <Field label="Počet detí" name="children" type="number" defaultValue="0" min="0" />
-        </div>
-        <Field label="Mená ďalších osôb" name="others" placeholder="Meno 1, Meno 2, ..." />
-        <div className="grid gap-4 md:grid-cols-2">
           <div>
-            <label className="font-marker text-xs uppercase tracking-wider text-[color:var(--bordo)]">Prídu s tebou zvieratá?</label>
-            <div className="mt-2 flex gap-4 text-[color:var(--ink)]">
-              <label className="inline-flex items-center gap-2"><input type="radio" name="pets" value="no" defaultChecked /> Nie</label>
-              <label className="inline-flex items-center gap-2"><input type="radio" name="pets" value="yes" /> Áno</label>
+            <label className="font-marker text-xs uppercase tracking-wider text-[color:var(--bordo)]">Telefón *</label>
+            <input
+              value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" required
+              className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)] placeholder:text-[color:var(--ink)]/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="font-marker text-xs uppercase tracking-wider text-[color:var(--bordo)]">Prídeš?</label>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setAttending("yes")}
+              className={`rounded-full border-2 px-5 py-2 font-marker text-sm uppercase tracking-wide transition ${
+                attending === "yes"
+                  ? "border-[color:var(--turquoise)] bg-[color:var(--turquoise)]/30 text-[color:var(--bordo-deep)]"
+                  : "border-dashed border-[color:var(--ink)]/40 text-[color:var(--ink)] hover:border-[color:var(--turquoise)]"
+              }`}
+            >Áno, prídem</button>
+            <button
+              type="button"
+              onClick={() => setAttending("no")}
+              className={`rounded-full border-2 px-5 py-2 font-marker text-sm uppercase tracking-wide transition ${
+                attending === "no"
+                  ? "border-[color:var(--bordo)] bg-[color:var(--bordo)]/15 text-[color:var(--bordo)]"
+                  : "border-dashed border-[color:var(--ink)]/40 text-[color:var(--ink)] hover:border-[color:var(--bordo)]"
+              }`}
+            >Nie, žiaľ neprídem</button>
+          </div>
+        </div>
+
+        {attending === "yes" && (
+          <div>
+            <div className="mb-2 flex items-baseline justify-between">
+              <label className="font-marker text-xs uppercase tracking-wider text-[color:var(--bordo)]">Ďalší hostia</label>
+              <span className="font-hand text-sm text-[color:var(--ink)]/60">
+                Pridaj každú ďalšiu osobu, ktorá s tebou príde (alebo aj neprí­de).
+              </span>
+            </div>
+            <div className="space-y-2">
+              {extras.map((g) => (
+                <div key={g.id} className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-[color:var(--ink)]/30 bg-white/40 p-2">
+                  <input
+                    value={g.name}
+                    onChange={(e) => updateExtra(g.id, { name: e.target.value })}
+                    placeholder="Meno a priezvisko hosťa"
+                    className="min-w-[180px] flex-1 rounded border border-[color:var(--ink)]/20 bg-white/70 px-2 py-1.5 text-[color:var(--ink)]"
+                  />
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => updateExtra(g.id, { attending: true })}
+                      className={`rounded-full px-3 py-1 text-xs font-marker uppercase transition ${
+                        g.attending
+                          ? "bg-[color:var(--turquoise)]/30 text-[color:var(--bordo-deep)]"
+                          : "text-[color:var(--ink)]/60 hover:bg-[color:var(--ink)]/5"
+                      }`}
+                    >Áno</button>
+                    <button
+                      type="button"
+                      onClick={() => updateExtra(g.id, { attending: false })}
+                      className={`rounded-full px-3 py-1 text-xs font-marker uppercase transition ${
+                        !g.attending
+                          ? "bg-[color:var(--bordo)]/15 text-[color:var(--bordo)]"
+                          : "text-[color:var(--ink)]/60 hover:bg-[color:var(--ink)]/5"
+                      }`}
+                    >Nie</button>
+                  </div>
+                  <button
+                    type="button" onClick={() => removeExtra(g.id)}
+                    aria-label="Odstrániť hosťa"
+                    className="ml-auto grid h-8 w-8 place-items-center rounded-md text-[color:var(--ink)]/50 hover:bg-[color:var(--bordo)]/10 hover:text-[color:var(--bordo)]"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button" onClick={addExtra}
+                className="inline-flex items-center gap-2 rounded-full border-2 border-dashed border-[color:var(--gold)] px-4 py-2 font-hand text-base text-[color:var(--gold)] hover:bg-[color:var(--gold)]/10 transition"
+              >
+                <Plus className="h-4 w-4" /> Pridať ďalšieho hosťa
+              </button>
             </div>
           </div>
-          <Field label="Poznámka k zvieratám" name="petNote" />
-        </div>
-        <Textarea label="Poznámka pre nás" name="note" />
+        )}
+
         <button
           disabled={loading}
           className="inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)] disabled:opacity-60"
@@ -606,137 +803,98 @@ function RsvpSection() {
   );
 }
 
-// ============ UBYTOVANIE ============
-function UbytovanieSection() {
-  const [nights, setNights] = useState(1);
-  const [rooms, setRooms] = useState(1);
-  const [type, setType] = useState<"single" | "double" | "twin">("double");
-  const [before, setBefore] = useState(false);
-  const [extra, setExtra] = useState(false);
-  const [cot, setCot] = useState(false);
-  const [pet, setPet] = useState(false);
-  const [parking, setParking] = useState(false);
-  const [persons, setPersons] = useState(2);
+// ============ POKRM (per-guest picker) ============
+type MealPick = { mealKey: string; kids: boolean };
+
+function PokrmSection() {
+  const guests = useGuests().filter((g) => g.attending);
+  const [picks, setPicks] = useState<Record<string, MealPick>>({});
   const [sent, setSent] = useState(false);
 
-  const roomRate = before
-    ? type === "single" ? 3400 : 3800
-    : type === "single" ? 1950 : 2500;
-
-  const price =
-    rooms * nights * roomRate +
-    (extra ? 600 * nights : 0) +
-    (cot ? 0 : 0) +
-    persons * 40 * nights +
-    (parking ? 390 * nights : 0) +
-    (pet ? 500 * nights : 0);
+  function setPick(id: string, patch: Partial<MealPick>) {
+    setPicks((p) => ({
+      ...p,
+      [id]: { mealKey: p[id]?.mealKey ?? CONFIG.meals[0].key, kids: p[id]?.kids ?? false, ...patch },
+    }));
+  }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const r = await submitForm("ubytovanie", { ...Object.fromEntries(fd), estimatedPrice: price });
-    if (r.ok) { setSent(true); toast.success("Save point uložený ✨"); }
+    const payload = guests.map((g) => ({
+      guestId: g.id, name: g.name,
+      meal: picks[g.id]?.mealKey ?? CONFIG.meals[0].key,
+      kids: picks[g.id]?.kids ?? false,
+    }));
+    const r = await submitForm("pokrm", { meals: payload });
+    if (r.ok) { setSent(true); toast.success("Power-up vybraný ⚡"); }
     else toast.error("Skús to prosím znova.");
   }
 
   return (
-    <Section id="ubytovanie" chapter="Chapter 04" title="Ubytovanie: spoločný save point">
-      <p className="max-w-3xl text-[color:var(--paper)]/85 leading-relaxed mb-6">
-        Pre hostí máme predbežne dohodnutú možnosť spoločného ubytovania v Hoteli Continental
-        na noc zo soboty 10.10.2026 na nedeľu 11.10.2026. Môžeš sa pridať k spoločnej rezervácii
-        alebo si ubytovanie vyriešiť po vlastnej osi.
-      </p>
-
-      <div className="grid gap-4 md:grid-cols-3 mb-8">
-        {[
-          ["Hlavná rezervácia", "10. – 11.10.2026"],
-          ["Check-in", "od 13:00"],
-          ["Check-out", "do 12:00"],
-          ["Raňajky", "v cene izby"],
-          ["Predĺženie", "po dohode s hotelom"],
-          ["Poznámka", "Predĺženie skôr po svadbe (v Brne je pred termínom veľtrh)."],
-        ].map(([k, v]) => (
-          <div key={k} className="paper-card p-4">
-            <p className="font-marker text-xs uppercase text-[color:var(--bordo)]">{k}</p>
-            <p className="mt-1 font-hand text-lg text-[color:var(--ink)]">{v}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2 mb-8">
-        <div className="paper-card p-5">
-          <h3 className="font-display text-2xl text-[color:var(--bordo)] mb-3">Cenník od 10.10.2026</h3>
-          <PriceRow label="Dvojlôžková DBL / TWIN" price="2 500 Kč / noc" />
-          <PriceRow label="Jednolôžková" price="1 950 Kč / noc" />
-          <p className="mt-2 text-xs text-[color:var(--ink)]/60">Ceny s raňajkami.</p>
-        </div>
-        <div className="paper-card p-5">
-          <h3 className="font-display text-2xl text-[color:var(--bordo)] mb-3">Cenník pred 10.10.2026</h3>
-          <PriceRow label="Dvojlôžková DBL / TWIN" price="3 800 Kč / noc" />
-          <PriceRow label="Jednolôžková" price="3 400 Kč / noc" />
-          <p className="mt-2 text-xs text-[color:var(--ink)]/60">Ceny s raňajkami.</p>
-        </div>
-      </div>
-
-      <div className="paper-card p-5 mb-8">
-        <h3 className="font-display text-2xl text-[color:var(--bordo)] mb-3">Doplatky</h3>
-        <div className="grid gap-1 md:grid-cols-2">
-          <PriceRow label="Prístelka" price="600 Kč" />
-          <PriceRow label="Detská postieľka (do 3 r.)" price="0 Kč" />
-          <PriceRow label="Mestská daň" price="40 Kč / osoba" />
-          <PriceRow label="Parkovanie" price="390 Kč" />
-          <PriceRow label="Zvierací maznáčik" price="500 Kč" />
-        </div>
-      </div>
-
-      {sent ? (
+    <Section id="pokrm" chapter="Chapter 05" title="Vyber si svoj svadobný power-up">
+      {guests.length === 0 ? (
         <div className="paper-card p-6 text-center">
-          <p className="font-hand text-2xl text-[color:var(--bordo)]">Ďakujeme, ozveme sa s potvrdením ✨</p>
+          <p className="font-hand text-xl text-[color:var(--ink)]">
+            Najprv prosím vyplň RSVP – potom sa tu zobrazia hostia a k nim výber pokrmu.
+          </p>
+          <a href="#rsvp" className="mt-4 inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-5 py-2 font-marker text-xs uppercase text-[color:var(--gold)]">
+            Ísť na RSVP
+          </a>
+        </div>
+      ) : sent ? (
+        <div className="paper-card p-6 text-center">
+          <p className="font-hand text-2xl text-[color:var(--bordo)]">Ďakujeme! Máme vaše voľby ✨</p>
         </div>
       ) : (
         <form onSubmit={onSubmit} className="paper-card p-6 md:p-8 space-y-5">
           <input type="text" name="hp" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden />
-          <h3 className="font-display text-2xl text-[color:var(--bordo)]">Formulár ubytovania</h3>
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Meno a priezvisko *" name="name" required />
-            <Field label="E-mail *" name="email" type="email" required />
-            <div>
-              <label className="font-marker text-xs uppercase text-[color:var(--bordo)]">Spoločná rezervácia?</label>
-              <div className="mt-2 flex gap-4 text-[color:var(--ink)]">
-                <label className="inline-flex items-center gap-2"><input type="radio" name="shared" value="yes" defaultChecked /> Áno</label>
-                <label className="inline-flex items-center gap-2"><input type="radio" name="shared" value="no" /> Nie</label>
-              </div>
-            </div>
-            <div>
-              <label className="font-marker text-xs uppercase text-[color:var(--bordo)]">Typ izby</label>
-              <select name="roomType" value={type} onChange={(e) => setType(e.target.value as never)} className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)]">
-                <option value="single">Jednolôžková</option>
-                <option value="double">Dvojlôžková DBL</option>
-                <option value="twin">Dvojlôžková TWIN</option>
-              </select>
-            </div>
-            <NumField label="Počet izieb" name="rooms" value={rooms} onChange={setRooms} />
-            <NumField label="Počet nocí" name="nights" value={nights} onChange={setNights} />
-            <NumField label="Počet osôb (mestská daň)" name="persons" value={persons} onChange={setPersons} />
-            <Field label="Dátum príchodu" name="arrival" type="date" defaultValue="2026-10-10" onChange={(e) => setBefore(new Date(e.target.value) < new Date("2026-10-10"))} />
-            <Field label="Dátum odchodu" name="departure" type="date" defaultValue="2026-10-11" />
-          </div>
-          <div className="grid gap-2 md:grid-cols-2">
-            <Toggle label="Detská postieľka (do 3 r.)" name="cot" checked={cot} onChange={setCot} />
-            <Toggle label="Prístelka pre dieťa (nad 3 r.)" name="extraBed" checked={extra} onChange={setExtra} />
-            <Toggle label="Beriem psa / zviera" name="pet" checked={pet} onChange={setPet} />
-            <Toggle label="Potrebujem parkovanie" name="parking" checked={parking} onChange={setParking} />
-          </div>
-          <Textarea label="Poznámka" name="note" />
-          <div className="rounded-lg border-2 border-dashed border-[color:var(--gold)] bg-[color:var(--gold)]/10 p-4">
-            <p className="font-marker text-xs uppercase text-[color:var(--bordo)]">Orientačný výpočet</p>
-            <p className="font-display text-4xl text-[color:var(--bordo)]">{price.toLocaleString("sk-SK")} Kč</p>
-            <p className="text-xs text-[color:var(--ink)]/70">
-              Ide o orientačnú kalkuláciu. Finálne potvrdenie pošleme my alebo hotel.
-            </p>
+          <p className="font-hand text-xl text-[color:var(--ink)]/80">
+            Pre každého hosťa vyber jedno z troch jedál. Ak ide o dieťa, zaklikni detskú porciu.
+          </p>
+          <div className="space-y-4">
+            {guests.map((g) => {
+              const pick = picks[g.id]?.mealKey ?? CONFIG.meals[0].key;
+              const kids = picks[g.id]?.kids ?? false;
+              return (
+                <div key={g.id} className="rounded-lg border border-dashed border-[color:var(--ink)]/30 bg-white/40 p-4">
+                  <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                    <h3 className="font-display text-xl text-[color:var(--bordo)]">{g.name}</h3>
+                    <label className="inline-flex items-center gap-2 font-hand text-base text-[color:var(--ink)]">
+                      <input
+                        type="checkbox" checked={kids}
+                        onChange={(e) => setPick(g.id, { kids: e.target.checked })}
+                        className="h-4 w-4 accent-[color:var(--bordo)]"
+                      />
+                      Detská porcia
+                    </label>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {CONFIG.meals.map((m) => (
+                      <label
+                        key={m.key}
+                        className={`cursor-pointer rounded-lg border-2 p-3 text-center transition ${
+                          pick === m.key
+                            ? "border-[color:var(--bordo)] bg-[color:var(--gold)]/20"
+                            : "border-dashed border-[color:var(--ink)]/30 hover:border-[color:var(--bordo)]"
+                        }`}
+                      >
+                        <input
+                          type="radio" name={`meal-${g.id}`} value={m.key}
+                          checked={pick === m.key}
+                          onChange={() => setPick(g.id, { mealKey: m.key })}
+                          className="sr-only"
+                        />
+                        <div className="text-3xl">{m.emoji}</div>
+                        <div className="mt-1 font-hand text-base text-[color:var(--ink)]">{m.label}</div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
           <button className="inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]">
-            <Send className="h-4 w-4" /> Odoslať záujem
+            <Send className="h-4 w-4" /> Odoslať výber
           </button>
         </form>
       )}
@@ -744,101 +902,222 @@ function UbytovanieSection() {
   );
 }
 
-function PriceRow({ label, price }: { label: string; price: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-2 border-b border-dashed border-[color:var(--ink)]/20 py-1.5 last:border-0">
-      <span className="font-hand text-lg text-[color:var(--ink)]">{label}</span>
-      <span className="font-marker text-sm text-[color:var(--bordo)]">{price}</span>
-    </div>
-  );
-}
+// ============ UBYTOVANIE ============
+type RoomEntry = {
+  id: string;
+  typeKey: string;          // single | double | twin
+  guestIds: string[];       // z listu hostí
+  cots: number;             // detské postieľky (do 3r) = zdarma
+  extraBeds: number;        // prístelky = 600 Kč / noc
+  pet: boolean;             // pes = 500 Kč / noc
+};
 
-function NumField({ label, name, value, onChange }: { label: string; name: string; value: number; onChange: (n: number) => void }) {
-  return (
-    <div>
-      <label className="font-marker text-xs uppercase text-[color:var(--bordo)]">{label}</label>
-      <input
-        type="number" min={0} name={name} value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)]"
-      />
-    </div>
-  );
-}
-
-function Toggle({ label, name, checked, onChange }: { label: string; name: string; checked: boolean; onChange: (b: boolean) => void }) {
-  return (
-    <label className="flex cursor-pointer items-center gap-3 rounded-md border border-[color:var(--ink)]/20 bg-white/40 px-3 py-2 text-[color:var(--ink)]">
-      <input type="checkbox" name={name} checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 accent-[color:var(--bordo)]" />
-      <span className="font-hand text-lg">{label}</span>
-    </label>
-  );
-}
-
-// ============ POKRM ============
-const DISHES = [
-  { emoji: "🥩", label: "Mäsové", key: "meat" },
-  { emoji: "🥗", label: "Vegetariánske", key: "veg" },
-  { emoji: "🌾", label: "Bezlepkové", key: "gf" },
-  { emoji: "🍟", label: "Detské menu", key: "kids" },
-  { emoji: "✨", label: "Iné", key: "other" },
-];
-
-function PokrmSection() {
-  const [pick, setPick] = useState("meat");
+function UbytovanieSection() {
+  const guests = useGuests().filter((g) => g.attending);
+  const [rooms, setRooms] = useState<RoomEntry[]>([]);
   const [sent, setSent] = useState(false);
+
+  function addRoom() {
+    setRooms((r) => [...r, {
+      id: makeId(), typeKey: CONFIG.rooms[1].key, guestIds: [],
+      cots: 0, extraBeds: 0, pet: false,
+    }]);
+  }
+  function removeRoom(id: string) {
+    setRooms((r) => r.filter((x) => x.id !== id));
+  }
+  function updateRoom(id: string, patch: Partial<RoomEntry>) {
+    setRooms((r) => r.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  }
+  function toggleGuest(roomId: string, guestId: string) {
+    setRooms((r) => r.map((x) => {
+      if (x.id !== roomId) return x;
+      const has = x.guestIds.includes(guestId);
+      return { ...x, guestIds: has ? x.guestIds.filter((g) => g !== guestId) : [...x.guestIds, guestId] };
+    }));
+  }
+
+  function roomPrice(r: RoomEntry) {
+    const base = CONFIG.rooms.find((x) => x.key === r.typeKey)?.price ?? 0;
+    return base + r.extraBeds * CONFIG.extras.extraBed + (r.pet ? CONFIG.extras.pet : 0);
+  }
+  const total = rooms.reduce((sum, r) => sum + roomPrice(r), 0);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const r = await submitForm("pokrm", Object.fromEntries(fd));
-    if (r.ok) { setSent(true); toast.success("Power-up vybraný ⚡"); }
+    if (rooms.length === 0) { toast.error("Pridaj aspoň jednu izbu."); return; }
+    const payload = rooms.map((r) => ({
+      typeKey: r.typeKey,
+      typeLabel: CONFIG.rooms.find((x) => x.key === r.typeKey)?.label,
+      guests: r.guestIds.map((id) => guests.find((g) => g.id === id)?.name).filter(Boolean),
+      cots: r.cots, extraBeds: r.extraBeds, pet: r.pet,
+      price: roomPrice(r),
+    }));
+    const r = await submitForm("ubytovanie", { rooms: payload, totalPrice: total, night: "10.10.2026 → 11.10.2026" });
+    if (r.ok) { setSent(true); toast.success("Save point uložený ✨"); }
     else toast.error("Skús to prosím znova.");
   }
 
   return (
-    <Section id="pokrm" chapter="Chapter 05" title="Vyber si svoj svadobný power-up">
+    <Section id="ubytovanie" chapter="Chapter 04" title="Ubytovanie: spoločný save point">
+      <p className="max-w-3xl text-[color:var(--paper)]/85 leading-relaxed mb-6">
+        Pre hostí máme predbežne dohodnuté ubytovanie v Hoteli Continental na noc
+        <strong> zo soboty 10.10.2026 na nedeľu 11.10.2026</strong>. Nižšie si naklikaj izby,
+        priraď k nim hostí a v prípade potreby detské postieľky, prístelky alebo psíka.
+      </p>
+
       {sent ? (
         <div className="paper-card p-6 text-center">
-          <p className="font-hand text-2xl text-[color:var(--bordo)]">Ďakujeme! Máme tvoju voľbu ✨</p>
+          <p className="font-hand text-2xl text-[color:var(--bordo)]">Ďakujeme, ozveme sa s potvrdením ✨</p>
+        </div>
+      ) : guests.length === 0 ? (
+        <div className="paper-card p-6 text-center">
+          <p className="font-hand text-xl text-[color:var(--ink)]">
+            Najprv prosím vyplň RSVP – potom si tu môžeš rozdeliť hostí do izieb.
+          </p>
+          <a href="#rsvp" className="mt-4 inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-5 py-2 font-marker text-xs uppercase text-[color:var(--gold)]">
+            Ísť na RSVP
+          </a>
         </div>
       ) : (
         <form onSubmit={onSubmit} className="paper-card p-6 md:p-8 space-y-5">
           <input type="text" name="hp" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden />
-          <Field label="Meno hosťa *" name="name" required />
-          <div>
-            <label className="font-marker text-xs uppercase text-[color:var(--bordo)]">Preferencia večere</label>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-              {DISHES.map((d) => (
-                <label
-                  key={d.key}
-                  className={`cursor-pointer rounded-xl border-2 p-4 text-center transition ${
-                    pick === d.key
-                      ? "border-[color:var(--bordo)] bg-[color:var(--gold)]/20"
-                      : "border-dashed border-[color:var(--ink)]/30 hover:border-[color:var(--bordo)]"
-                  }`}
-                >
-                  <input type="radio" name="meal" value={d.key} className="sr-only" checked={pick === d.key} onChange={() => setPick(d.key)} />
-                  <div className="text-4xl">{d.emoji}</div>
-                  <div className="mt-2 font-hand text-lg text-[color:var(--ink)]">{d.label}</div>
-                </label>
-              ))}
-            </div>
+
+          <div className="space-y-4">
+            {rooms.map((r, idx) => (
+              <div key={r.id} className="rounded-lg border-2 border-dashed border-[color:var(--ink)]/30 bg-white/40 p-4">
+                <div className="mb-3 flex items-baseline justify-between gap-2">
+                  <h3 className="font-display text-xl text-[color:var(--bordo)]">Izba #{idx + 1}</h3>
+                  <button
+                    type="button" onClick={() => removeRoom(r.id)}
+                    aria-label="Odstrániť izbu"
+                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[color:var(--ink)]/60 hover:bg-[color:var(--bordo)]/10 hover:text-[color:var(--bordo)]"
+                  >
+                    <Trash2 className="h-4 w-4" /> Odstrániť
+                  </button>
+                </div>
+
+                <div>
+                  <label className="font-marker text-xs uppercase text-[color:var(--bordo)]">Typ izby</label>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                    {CONFIG.rooms.map((rt) => (
+                      <label
+                        key={rt.key}
+                        className={`cursor-pointer rounded-lg border-2 p-3 text-left transition ${
+                          r.typeKey === rt.key
+                            ? "border-[color:var(--bordo)] bg-[color:var(--gold)]/20"
+                            : "border-dashed border-[color:var(--ink)]/30 hover:border-[color:var(--bordo)]"
+                        }`}
+                      >
+                        <input
+                          type="radio" name={`type-${r.id}`} value={rt.key}
+                          checked={r.typeKey === rt.key}
+                          onChange={() => updateRoom(r.id, { typeKey: rt.key })}
+                          className="sr-only"
+                        />
+                        <div className="font-hand text-base text-[color:var(--ink)]">{rt.label}</div>
+                        <div className="font-marker text-xs text-[color:var(--bordo)]">{rt.price.toLocaleString("sk-SK")} Kč / noc</div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <label className="font-marker text-xs uppercase text-[color:var(--bordo)]">Na koho je izba</label>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {guests.map((g) => {
+                      const on = r.guestIds.includes(g.id);
+                      return (
+                        <button
+                          type="button" key={g.id}
+                          onClick={() => toggleGuest(r.id, g.id)}
+                          className={`rounded-full border-2 px-3 py-1.5 font-hand text-sm transition ${
+                            on
+                              ? "border-[color:var(--turquoise)] bg-[color:var(--turquoise)]/25 text-[color:var(--bordo-deep)]"
+                              : "border-dashed border-[color:var(--ink)]/30 text-[color:var(--ink)] hover:border-[color:var(--bordo)]"
+                          }`}
+                        >
+                          {on && <Check className="mr-1 inline h-3 w-3" />}
+                          {g.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="font-marker text-xs uppercase text-[color:var(--bordo)]">Detské postieľky (do 3 r.)</label>
+                    <input
+                      type="number" min={0} value={r.cots}
+                      onChange={(e) => updateRoom(r.id, { cots: Math.max(0, Number(e.target.value)) })}
+                      className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)]"
+                    />
+                    <p className="mt-1 text-xs text-[color:var(--ink)]/60">Zdarma</p>
+                  </div>
+                  <div>
+                    <label className="font-marker text-xs uppercase text-[color:var(--bordo)]">Prístelky</label>
+                    <input
+                      type="number" min={0} value={r.extraBeds}
+                      onChange={(e) => updateRoom(r.id, { extraBeds: Math.max(0, Number(e.target.value)) })}
+                      className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)]"
+                    />
+                    <p className="mt-1 text-xs text-[color:var(--ink)]/60">{CONFIG.extras.extraBed} Kč / ks</p>
+                  </div>
+                  <div>
+                    <label className="font-marker text-xs uppercase text-[color:var(--bordo)]">Pes na izbe</label>
+                    <label className="mt-1 flex cursor-pointer items-center gap-3 rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)]">
+                      <input
+                        type="checkbox" checked={r.pet}
+                        onChange={(e) => updateRoom(r.id, { pet: e.target.checked })}
+                        className="h-4 w-4 accent-[color:var(--bordo)]"
+                      />
+                      <span className="font-hand text-base">Áno ({CONFIG.extras.pet} Kč)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="mt-3 text-right font-marker text-sm text-[color:var(--bordo)]">
+                  Izba spolu: {roomPrice(r).toLocaleString("sk-SK")} Kč
+                </div>
+              </div>
+            ))}
           </div>
-          <Field label="Alergie a intolerancie" name="allergies" />
-          <div>
-            <label className="font-marker text-xs uppercase text-[color:var(--bordo)]">Polievka</label>
-            <div className="mt-2 flex gap-4 text-[color:var(--ink)]">
-              <label className="inline-flex items-center gap-2"><input type="radio" name="soup" value="yes" defaultChecked /> Áno</label>
-              <label className="inline-flex items-center gap-2"><input type="radio" name="soup" value="no" /> Nie</label>
+
+          <button
+            type="button" onClick={addRoom}
+            className="inline-flex items-center gap-2 rounded-full border-2 border-dashed border-[color:var(--gold)] px-4 py-2 font-hand text-base text-[color:var(--gold)] hover:bg-[color:var(--gold)]/10 transition"
+          >
+            <Plus className="h-4 w-4" /> Pridať izbu
+          </button>
+
+          {rooms.length > 0 && (
+            <div className="rounded-lg border-2 border-dashed border-[color:var(--gold)] bg-[color:var(--gold)]/10 p-4">
+              <p className="font-marker text-xs uppercase text-[color:var(--bordo)]">Predbežná kalkulácia (1 noc)</p>
+              <p className="font-display text-4xl text-[color:var(--bordo)]">{total.toLocaleString("sk-SK")} Kč</p>
+              <p className="text-xs text-[color:var(--ink)]/70">
+                Ide o orientačnú kalkuláciu. Finálne potvrdenie pošleme my alebo hotel.
+              </p>
             </div>
-          </div>
-          <Textarea label="Poznámka" name="note" />
+          )}
+
           <button className="inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]">
-            <Send className="h-4 w-4" /> Odoslať výber
+            <Send className="h-4 w-4" /> Odoslať záujem
           </button>
         </form>
       )}
+
+      <div className="paper-card mt-6 p-5">
+        <p className="font-marker text-xs uppercase text-[color:var(--bordo)]">Dobré vedieť</p>
+        <ul className="mt-2 space-y-1.5 font-hand text-lg text-[color:var(--ink)]">
+          <li>· Raňajky sú v cene izby.</li>
+          <li>· Parkovanie v hoteli je za príplatok <strong>{CONFIG.extras.parking} Kč / noc</strong>.</li>
+          <li>
+            · Ak plánuješ prísť skôr alebo zostať dlhšie, kontaktuj prosím hotel priamo.
+            Odporúčame <strong>predĺžiť pobyt až po svadbe</strong> – pred termínom je Brno vybookované kvôli technickému veľtrhu.
+          </li>
+        </ul>
+      </div>
     </Section>
   );
 }
@@ -919,7 +1198,7 @@ function DarySection() {
   );
 }
 
-// ============ DEŇ (Uži si) ============
+// ============ DEŇ ============
 function DenSection() {
   return (
     <Section id="den" chapter="Chapter 08" title="Uži si náš deň">
@@ -980,9 +1259,9 @@ function FotkySection() {
 const FAQ = [
   { q: "Kedy máme prísť?", a: "Zraz je o 14:00 na Moravském náměstí. Obrad začína o 15:30 v Kostole sv. Jakuba — príďte s 15 min rezervou." },
   { q: "Kde je obrad?", a: "Kostol sv. Jakuba v Brne. Odkaz na Google Maps nájdeš v sekcii Lokácie." },
-  { q: "Kde zaparkovať?", a: "V Hoteli Continental je platené parkovanie (390 Kč). V okolí Kumstu a kostola sú platené parkoviská." },
+  { q: "Kde zaparkovať?", a: "V Hoteli Continental je platené parkovanie (390 Kč / noc). V okolí Kumstu a kostola sú platené parkoviská." },
   { q: "Ako funguje ubytovanie?", a: "Máme predbežnú rezerváciu v Hoteli Continental na noc 10. – 11.10. Detaily a formulár nájdeš v sekcii Ubytovanie." },
-  { q: "Čo s deťmi?", a: "Deti sú vítané. V RSVP prosím uveď ich počet a v sekcii Pokrm vyber detské menu." },
+  { q: "Čo s deťmi?", a: "Deti sú vítané. V RSVP ich pridaj ako ďalších hostí a v sekcii Pokrm im zaklikni detskú porciu." },
   { q: "Čo s darom?", a: "Radi prijmeme finančný príspevok — obálka, QR platba alebo prevod. Detaily v sekcii Loot & kytice." },
   { q: "Aký je dresscode?", a: "Slávnostne a pohodlne. Jesenné, bordové, zlaté tóny vítané. Viac v sekcii Dresscode." },
   { q: "Kam nahrať fotky?", a: "Do našej spoločnej galérie cez tlačidlo alebo QR kód v sekcii Fotky." },
@@ -1063,8 +1342,8 @@ function KontaktSection() {
       </p>
       <div className="grid gap-6 md:grid-cols-2">
         {[
-          { name: "Natália", ...CONFIG.contacts.natalia, color: "var(--blush)" },
-          { name: "Oto", ...CONFIG.contacts.oto, color: "var(--turquoise)" },
+          { name: "Natália", ...CONFIG.contacts.natalia },
+          { name: "Oto", ...CONFIG.contacts.oto },
         ].map((c) => (
           <div key={c.name} className="paper-card p-6">
             <div className="mb-3 flex items-center gap-3">
@@ -1099,33 +1378,5 @@ function Footer() {
         End of quest log · vidíme sa čoskoro ❤️
       </p>
     </footer>
-  );
-}
-
-// ============ FORM PRIMITIVES ============
-function Field(props: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) {
-  const { label, ...rest } = props;
-  return (
-    <div>
-      <label className="font-marker text-xs uppercase tracking-wider text-[color:var(--bordo)]">{label}</label>
-      <input
-        {...rest}
-        className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)] placeholder:text-[color:var(--ink)]/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
-      />
-    </div>
-  );
-}
-
-function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string }) {
-  const { label, ...rest } = props;
-  return (
-    <div>
-      <label className="font-marker text-xs uppercase tracking-wider text-[color:var(--bordo)]">{label}</label>
-      <textarea
-        rows={3}
-        {...rest}
-        className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)] placeholder:text-[color:var(--ink)]/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
-      />
-    </div>
   );
 }
