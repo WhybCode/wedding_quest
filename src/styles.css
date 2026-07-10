@@ -80,7 +80,10 @@
 
 @layer base {
   * { border-color: var(--color-border); }
-  html { scroll-behavior: smooth; }
+  html {
+    scroll-behavior: smooth;
+    scroll-snap-type: y proximity;
+  }
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
@@ -90,12 +93,13 @@
       radial-gradient(circle at 85% 80%, oklch(0.32 0.11 15 / 0.5), transparent 45%),
       radial-gradient(circle at 50% 50%, oklch(0.30 0.08 20 / 0.3), transparent 60%);
   }
+  .snap-section { scroll-snap-align: start; }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
       animation-duration: 0.01ms !important;
       transition-duration: 0.01ms !important;
     }
-    html { scroll-behavior: auto; }
+    html { scroll-behavior: auto; scroll-snap-type: none; }
   }
 }
 
