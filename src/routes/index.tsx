@@ -1,11 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast, Toaster } from "sonner";
+import { CursorHearts } from "../components/CursorHearts";
+import { TetrisBackground } from "../components/TetrisDecor";
+import { WeddingMap, MapMarkerIcon } from "../components/WeddingMap";
+import photoManifest from "../data/photo-manifest.json";
+import { sitePath } from "../lib/site-path";
 import {
   Heart, MapPin, Calendar as CalendarIcon, Music, Utensils, Sparkles,
   Camera, Gift, Shirt, HelpCircle, Phone, Mail, Check, ChevronDown,
   ChevronRight, Send, Bot, User as UserIcon, Download, ExternalLink,
-  Plus, Trash2,
+  Plus, Trash2, Car, Ban, CircleCheck,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({ component: WeddingSite });
@@ -17,31 +22,77 @@ const CONFIG = {
   dateISO: "2026-10-10T14:00:00+02:00",
   dateHuman: "10.10.2026",
   city: "Brno, Česká republika",
-  formEndpoint: "https://formspree.io/f/your-endpoint",
+  /** Formspree — https://formspree.io/f/mzdnpyza (prepíše VITE_FORMSPREE_ENDPOINT v .env) */
+  formEndpoint: import.meta.env.VITE_FORMSPREE_ENDPOINT ?? "https://formspree.io/f/mzdnpyza",
+  formEndpoints: {
+    rsvp: import.meta.env.VITE_FORMSPREE_RSVP ?? "",
+    pokrm: import.meta.env.VITE_FORMSPREE_POKRM ?? "",
+    ubytovanie: import.meta.env.VITE_FORMSPREE_UBYTOVANIE ?? "",
+  },
   contacts: {
-    natalia: { phone: "+421 900 000 000", email: "natalia@example.com" },
-    oto: { phone: "+421 900 000 001", email: "oto@example.com" },
+    natalia: { phone: "+421 950 323 833", email: "nataalia.schultz@gmail.com" },
+    oto: { phone: "+421 949 127 356", email: "oto.schultz.o3@gmail.com" },
   },
   maps: {
-    hotel: "https://www.google.com/maps/search/Hotel+Continental+Brno",
-    zraz: "https://www.google.com/maps/search/Moravsk%C3%A9+n%C3%A1m%C4%9Bst%C3%AD+Brno",
-    kostol: "https://www.google.com/maps/search/Kostel+sv.+Jakuba+Brno",
-    kumst: "https://www.google.com/maps/search/Kumst+Brno",
+    hotel: "https://www.google.com/maps/place/Kounicova+680%2F6,+602+00+Brno/@49.2005075,16.6046812,17z",
+    zraz: "https://www.google.com/maps/place/Kounicova+680%2F6,+602+00+Brno/@49.2005075,16.6046812,17z",
+    kostol: "https://www.google.com/maps/place/Kostel+svat%C3%A9ho+Jakuba,+Jakubsk%C3%A9+n%C3%A1m%C4%9Bst%C3%AD,+Brno/@49.1966056,16.6083647,17z",
+    kumst: "https://www.google.com/maps/place/KUMST/@49.196831,16.600333,17z",
+  },
+  /** Lokácie svadby — súradnice pre mapu a karty */
+  locations: [
+    {
+      id: "hotel",
+      name: "Hotel Continental",
+      desc: "Ubytovanie & check-in. Naša štartovacia zóna.",
+      addr: "Kounicova 680/6, 602 00 Brno",
+      image: "photos/lokacia_1.jpg",
+      lat: 49.2005075,
+      lng: 16.6046812,
+      url: "https://www.google.com/maps/place/Kounicova+680%2F6,+602+00+Brno/@49.2005075,16.6046812,17z",
+    },
+    {
+      id: "kostol",
+      name: "Kostol sv. Jakuba",
+      desc: "Obrad. Prosíme, príďte s 15 min rezervou.",
+      addr: "Jakubské náměstí, 602 00 Brno",
+      image: "photos/lokacia_2.jpg",
+      lat: 49.1966056,
+      lng: 16.6083647,
+      url: "https://www.google.com/maps/place/Kostel+svat%C3%A9ho+Jakuba,+Jakubsk%C3%A9+n%C3%A1m%C4%9Bst%C3%AD,+Brno/@49.1966056,16.6083647,17z",
+    },
+    {
+      id: "kumst",
+      name: "Kumst",
+      desc: "Hostina, prvý tanec, raut a dozvuky.",
+      addr: "Údolní 495/19, 602 00 Brno",
+      image: "photos/lokacia_3.jpg",
+      lat: 49.196831,
+      lng: 16.600333,
+      url: "https://www.google.com/maps/place/KUMST/@49.196831,16.600333,17z",
+    },
+  ],
+  /** Voliteľná vlastná mapa (obrázok v public/) namiesto OpenStreetMap — napr. "/maps/brno-custom.png" */
+  mapCustomImage: "" as string,
+  hotel: {
+    name: "Hotel Continental Brno",
+    phone: "+420 541 519 609",
+    email: "info@continentalbrno.cz",
   },
   qrPayment: "https://placehold.co/220x220/f5e9c8/3a1418?text=QR+platba",
   qrPhotos: "https://placehold.co/220x220/f5e9c8/3a1418?text=QR+fotky",
   photoUploadUrl: "#",
   // Trojica jedál na výber pre hostí
   meals: [
-    { key: "meat", label: "Mäsové", emoji: "🥩" },
-    { key: "veg", label: "Vegetariánske", emoji: "🥗" },
-    { key: "fish", label: "Rybie", emoji: "🐟" },
+    { key: "meat", label: "Bravčové medailónky", desc: "Jemné mäso s omáčkou, zemiakovým pyré a sezónnou zeleninou." },
+    { key: "veg", label: "Ratatouille & halloumi", desc: "Pečená zelenina s grilovaným syrom a bylinkovým olejom." },
+    { key: "fish", label: "Losos na masle", desc: "Filet s citrónovým dresingom, špenátom a ryžou." },
   ] as const,
   // Cenník izieb (Kč / noc, vrátane raňajok)
   rooms: [
     { key: "single", label: "Jednolôžková", price: 1950 },
-    { key: "double", label: "Dvojlôžková DBL", price: 2500 },
-    { key: "twin", label: "Dvojlôžková TWIN", price: 2500 },
+    { key: "double", label: "Dvojlôžková DBL", sublabel: "manželská posteľ", price: 2500 },
+    { key: "twin", label: "Dvojlôžková TWIN", sublabel: "oddelené postele", price: 2500 },
   ] as const,
   extras: {
     extraBed: 600,   // prístelka
@@ -54,6 +105,11 @@ const CONFIG = {
 // ============ SHARED GUEST STORE (RSVP → Pokrm → Ubytovanie) ============
 type Guest = { id: string; name: string; attending: boolean };
 const GUEST_KEY = "no-wedding-guests-v1";
+const RSVP_SENT_KEY = "no-wedding-rsvp-sent-v1";
+const POKRM_SENT_KEY = "no-wedding-pokrm-sent-v1";
+const POKRM_DATA_KEY = "no-wedding-pokrm-data-v1";
+const UBYTOVANIE_SENT_KEY = "no-wedding-ubytovanie-sent-v1";
+const UBYTOVANIE_DATA_KEY = "no-wedding-ubytovanie-data-v1";
 
 function readGuests(): Guest[] {
   if (typeof window === "undefined") return [];
@@ -86,51 +142,445 @@ function useGuests(): Guest[] {
 
 // ============ CHECKLIST ============
 const SECTIONS = [
-  { id: "rsvp", label: "Potvrď účasť", icon: Check },
   { id: "hero", label: "Poznač si termín", icon: CalendarIcon },
   { id: "program", label: "Naplánuj si deň", icon: MapPin },
-  { id: "ubytovanie", label: "Zariaď si ubytovanie", icon: Sparkles },
+  { id: "lokacie", label: "Naplánuj si cestu", icon: Car },
+  { id: "rsvp", label: "Potvrď účasť", icon: Check },
+  { id: "ubytovanie", label: "Rezervuj si izbu", icon: Sparkles },
   { id: "pokrm", label: "Vyber si pokrm", icon: Utensils },
   { id: "dresscode", label: "Nachystaj si dresscode", icon: Shirt },
   { id: "dary", label: "Priprav dar", icon: Gift },
   { id: "den", label: "Uži si náš deň", icon: Music },
+  { id: "brno", label: "Objav Brno", icon: MapPin },
   { id: "fotky", label: "Zdieľaj s nami fotky", icon: Camera },
-  { id: "kontakt", label: "Kontakt", icon: Phone },
+  { id: "faq", label: "Ešte niečo...?", icon: HelpCircle },
 ];
 const CHECK_KEY = "no-wedding-checked-v1";
+
+const SNAP_SECTION_IDS = [
+  "hero", "program", "lokacie", "rsvp", "ubytovanie", "pokrm",
+  "dresscode", "dary", "den", "brno", "fotky", "faq", "kontakt",
+] as const;
+
+/** Pri scroll dole: 30 % aktuálna / 70 % nasledujúca. Pri scroll hore: 70 % predchádzajúca / 30 % aktuálna. */
+const SNAP_DOWN_STAY_RATIO = 0.3;
+const SNAP_UP_STAY_RATIO = 0.7;
+const SNAP_MIN_MS = 1050;
+const SNAP_MAX_MS = 2100;
+const SNAP_MS_PER_PX = 5.2;
+
+function getSnapEdge() {
+  return window.matchMedia("(min-width: 1024px)").matches ? 16 : 68;
+}
+
+type SectionAnchor = { el: HTMLElement; docTop: number };
+
+let activeSnapFrame = 0;
+let scrollVelocityPxMs = 0;
+
+function cancelActiveSnap() {
+  if (activeSnapFrame) cancelAnimationFrame(activeSnapFrame);
+  activeSnapFrame = 0;
+}
+
+function getSectionAnchors(): SectionAnchor[] {
+  const edge = getSnapEdge();
+  return SNAP_SECTION_IDS.flatMap((id) => {
+    const el = document.getElementById(id);
+    if (!el) return [];
+    return [{ el, docTop: el.getBoundingClientRect().top + window.scrollY - edge }];
+  });
+}
+
+function alignSectionToTop(
+  el: HTMLElement,
+  reducedMotion: boolean,
+  _velocityPxMs: number,
+  onDone?: () => void,
+) {
+  const targetTop = el.getBoundingClientRect().top + window.scrollY - getSnapEdge();
+  const start = window.scrollY;
+  const distance = targetTop - start;
+  if (Math.abs(distance) < 2) {
+    onDone?.();
+    return;
+  }
+
+  cancelActiveSnap();
+
+  if (reducedMotion) {
+    window.scrollTo(0, targetTop);
+    onDone?.();
+    return;
+  }
+
+  const duration = Math.min(
+    SNAP_MAX_MS,
+    Math.max(SNAP_MIN_MS, Math.abs(distance) * SNAP_MS_PER_PX),
+  );
+  const t0 = performance.now();
+  const easeOut = (t: number) => 1 - Math.pow(1 - t, 4);
+
+  const step = (now: number) => {
+    const p = Math.min(1, (now - t0) / duration);
+    window.scrollTo(0, start + distance * easeOut(p));
+    if (p < 1) {
+      activeSnapFrame = requestAnimationFrame(step);
+    } else {
+      activeSnapFrame = 0;
+      onDone?.();
+    }
+  };
+
+  activeSnapFrame = requestAnimationFrame(step);
+}
+
+function isAlignedToSection(el: HTMLElement, tolerance = 3) {
+  return Math.abs(el.getBoundingClientRect().top - getSnapEdge()) <= tolerance;
+}
+
+const CHECKLIST_IDS = new Set(SECTIONS.map((s) => s.id));
+
+/** Sekcie bez vlastnej položky v quest logu → checklist id */
+const SECTION_TO_CHECKLIST: Record<string, string> = {
+  kontakt: "faq",
+};
+
+function sectionToChecklist(sectionId: string): string {
+  const id = SECTION_TO_CHECKLIST[sectionId] ?? sectionId;
+  return CHECKLIST_IDS.has(id) ? id : "faq";
+}
+
+function checklistToSection(checklistId: string): string {
+  return checklistId;
+}
+
+function getActiveChecklistId(): string {
+  const edge = getSnapEdge();
+  const marker = edge + 96;
+
+  for (let i = SNAP_SECTION_IDS.length - 1; i >= 0; i--) {
+    const id = SNAP_SECTION_IDS[i];
+    const el = document.getElementById(id);
+    if (!el) continue;
+    const rect = el.getBoundingClientRect();
+    if (rect.top <= marker && rect.bottom > edge) {
+      return sectionToChecklist(id);
+    }
+  }
+  return "hero";
+}
+
+function getSectionIndex(scrollY: number, sections: SectionAnchor[]) {
+  for (let i = 0; i < sections.length - 1; i++) {
+    if (scrollY < sections[i + 1].docTop) return i;
+  }
+  return sections.length - 1;
+}
+
+function getAlignedSection(sections: SectionAnchor[]): HTMLElement | null {
+  const edge = getSnapEdge();
+  for (const s of sections) {
+    if (Math.abs(s.el.getBoundingClientRect().top - edge) <= 4) return s.el;
+  }
+  return null;
+}
+
+function getMinSnapSpan() {
+  return Math.min(window.innerHeight * 0.42, 560);
+}
+
+/** Dlhé sekcie (ubytovanie, FAQ…) — voľný scroll uprostred, snap len na hornom/dolnom okraji */
+function getTallSectionScrollZone(): "middle" | "top" | "bottom" | null {
+  const sections = getSectionAnchors();
+  if (!sections.length) return null;
+
+  const idx = getSectionIndex(window.scrollY, sections);
+  const current = sections[idx];
+  if (!current) return null;
+
+  const el = current.el;
+  const viewH = window.innerHeight;
+  if (el.offsetHeight <= viewH * 0.92) return null;
+
+  const edge = getSnapEdge();
+  const rect = el.getBoundingClientRect();
+  const topAligned = rect.top >= edge - 8 && rect.top <= edge + 56;
+  const atBottom = rect.bottom <= viewH + 32;
+
+  if (topAligned) return "top";
+  if (atBottom) return "bottom";
+  return "middle";
+}
+
+/** Vždy vráti cieľovú sekciu — 30/70 podľa smeru, pri krátkych sekciách najbližší okraj */
+function resolveSnapTarget(direction: 1 | -1): HTMLElement | null {
+  const sections = getSectionAnchors();
+  if (!sections.length) return null;
+
+  const scrollY = window.scrollY;
+  const edge = getSnapEdge();
+  const idx = getSectionIndex(scrollY, sections);
+  const current = sections[idx];
+  const next = sections[idx + 1];
+  const prev = sections[idx - 1];
+  const minSpan = getMinSnapSpan();
+
+  if (direction > 0) {
+    if (!next) return current.el;
+    const rawSpan = Math.max(next.docTop - current.docTop, 1);
+    if (rawSpan < minSpan) {
+      const dCurrent = Math.abs(current.el.getBoundingClientRect().top - edge);
+      const dNext = Math.abs(next.el.getBoundingClientRect().top - edge);
+      return dNext < dCurrent ? next.el : current.el;
+    }
+    const progress = (scrollY - current.docTop) / rawSpan;
+    return progress < SNAP_DOWN_STAY_RATIO ? current.el : next.el;
+  }
+
+  if (next) {
+    const rawSpan = Math.max(next.docTop - current.docTop, 1);
+    if (rawSpan < minSpan) {
+      const dCurrent = Math.abs(current.el.getBoundingClientRect().top - edge);
+      const dNext = Math.abs(next.el.getBoundingClientRect().top - edge);
+      return dCurrent <= dNext ? current.el : next.el;
+    }
+    const progress = (scrollY - current.docTop) / rawSpan;
+    if (progress > SNAP_DOWN_STAY_RATIO) return current.el;
+  }
+
+  if (!prev) return current.el;
+  const rawSpan = Math.max(current.docTop - prev.docTop, 1);
+  if (rawSpan < minSpan) {
+    const dCurrent = Math.abs(current.el.getBoundingClientRect().top - edge);
+    const dPrev = Math.abs(prev.el.getBoundingClientRect().top - edge);
+    return dCurrent <= dPrev ? current.el : prev.el;
+  }
+  const progress = (scrollY - prev.docTop) / rawSpan;
+  return progress > SNAP_UP_STAY_RATIO ? current.el : prev.el;
+}
+
+function inferSnapDirection(userIntentDelta: number): 1 | -1 {
+  if (userIntentDelta > 8) return 1;
+  if (userIntentDelta < -8) return -1;
+
+  const sections = getSectionAnchors();
+  if (sections.length < 2) return 1;
+
+  const edge = getSnapEdge();
+  const idx = getSectionIndex(window.scrollY, sections);
+  const current = sections[idx];
+  const next = sections[idx + 1];
+  const prev = sections[idx - 1];
+
+  const dCurrent = Math.abs(current.el.getBoundingClientRect().top - edge);
+  const dNext = next ? Math.abs(next.el.getBoundingClientRect().top - edge) : Infinity;
+  const dPrev = prev ? Math.abs(prev.el.getBoundingClientRect().top - edge) : Infinity;
+
+  if (dNext < dCurrent - 2) return 1;
+  if (dPrev < dCurrent - 2) return -1;
+  return dNext <= dPrev ? 1 : -1;
+}
+
+function markSectionChecked(id: string) {
+  try {
+    const raw = window.localStorage.getItem(CHECK_KEY);
+    const next = new Set(raw ? (JSON.parse(raw) as string[]) : []);
+    if (next.has(id)) return;
+    next.add(id);
+    window.localStorage.setItem(CHECK_KEY, JSON.stringify([...next]));
+    window.dispatchEvent(new CustomEvent("wedding-check-update"));
+  } catch { /* noop */ }
+}
 
 function WeddingSite() {
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [active, setActive] = useState<string>("hero");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const scrollLockRef = useRef(false);
+  const lastSnapAtRef = useRef(0);
+  const pendingChecklistRef = useRef<string | null>(null);
 
   // Load persisted checks
   useEffect(() => {
+    const sync = () => {
+      try {
+        const raw = window.localStorage.getItem(CHECK_KEY);
+        if (raw) setChecked(new Set(JSON.parse(raw) as string[]));
+      } catch { /* noop */ }
+    };
+    sync();
     try {
-      const raw = window.localStorage.getItem(CHECK_KEY);
-      if (raw) setChecked(new Set(JSON.parse(raw) as string[]));
+      if (window.localStorage.getItem(RSVP_SENT_KEY) === "1") markSectionChecked("rsvp");
+      if (window.localStorage.getItem(POKRM_SENT_KEY) === "1") markSectionChecked("pokrm");
+      if (window.localStorage.getItem(UBYTOVANIE_SENT_KEY) === "1") markSectionChecked("ubytovanie");
     } catch { /* noop */ }
+    window.addEventListener("wedding-check-update", sync);
+    return () => window.removeEventListener("wedding-check-update", sync);
   }, []);
 
-  // Track active section (for highlight only, NOT auto-check)
+  // Aktívna položka checklistu podľa scroll pozície
   useEffect(() => {
-    const obs = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((e) => {
-          if (e.isIntersecting) setActive(e.target.id);
-        });
-      },
-      { rootMargin: "-40% 0px -50% 0px" }
-    );
-    SECTIONS.forEach((s) => {
-      const el = document.getElementById(s.id);
-      if (el) obs.observe(el);
-    });
-    return () => obs.disconnect();
+    let activeTimer: ReturnType<typeof setTimeout>;
+
+    const applyActive = () => setActive(getActiveChecklistId());
+
+    const syncActive = (immediate = false) => {
+      if (pendingChecklistRef.current) {
+        setActive(pendingChecklistRef.current);
+        return;
+      }
+      if (scrollLockRef.current || activeSnapFrame) return;
+
+      clearTimeout(activeTimer);
+      if (immediate) applyActive();
+      else activeTimer = setTimeout(applyActive, 120);
+    };
+
+    const onScroll = () => syncActive(false);
+    const onResize = () => syncActive(true);
+
+    syncActive(true);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onResize);
+      clearTimeout(activeTimer);
+    };
+  }, []);
+
+  // Po dokončení scrollu: 30/70 podľa smeru, bez preskakovania krátkych sekcií
+  useEffect(() => {
+    let endTimer: ReturnType<typeof setTimeout>;
+    let lastScrollY = window.scrollY;
+    let lastScrollTime = performance.now();
+    let userIntentDelta = 0;
+    const SNAP_COOLDOWN_MS = 320;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+    const snapAfterScrollEnd = () => {
+      if (scrollLockRef.current) return;
+      if (Date.now() - lastSnapAtRef.current < SNAP_COOLDOWN_MS) return;
+
+      const sections = getSectionAnchors();
+      if (getAlignedSection(sections)) {
+        userIntentDelta = 0;
+        return;
+      }
+
+      const tallZone = getTallSectionScrollZone();
+      if (tallZone === "middle") {
+        userIntentDelta = 0;
+        return;
+      }
+
+      const direction = inferSnapDirection(userIntentDelta);
+      let target: HTMLElement | null = null;
+
+      if (tallZone === "bottom" && direction > 0) {
+        const idx = getSectionIndex(window.scrollY, sections);
+        target = sections[idx + 1]?.el ?? sections[idx].el;
+      } else if (tallZone === "top" && direction < 0) {
+        const idx = getSectionIndex(window.scrollY, sections);
+        target = sections[idx - 1]?.el ?? sections[idx].el;
+      } else if (tallZone === "bottom" || tallZone === "top") {
+        userIntentDelta = 0;
+        return;
+      } else {
+        target = resolveSnapTarget(direction);
+      }
+
+      if (!target || isAlignedToSection(target)) {
+        userIntentDelta = 0;
+        return;
+      }
+
+      scrollLockRef.current = true;
+      userIntentDelta = 0;
+      alignSectionToTop(target, reducedMotion.matches, 0, () => {
+        scrollLockRef.current = false;
+        lastSnapAtRef.current = Date.now();
+        scrollVelocityPxMs = 0;
+        userIntentDelta = 0;
+        if (!pendingChecklistRef.current) {
+          setActive(getActiveChecklistId());
+        }
+      });
+    };
+
+    const scheduleSnap = () => {
+      if (scrollLockRef.current) return;
+      clearTimeout(endTimer);
+      endTimer = setTimeout(snapAfterScrollEnd, 180);
+    };
+
+    const onScroll = () => {
+      const now = performance.now();
+      const y = window.scrollY;
+      const dt = now - lastScrollTime;
+      const dy = y - lastScrollY;
+      if (dt > 0 && dt < 90) {
+        const instant = dy / dt;
+        scrollVelocityPxMs = scrollVelocityPxMs * 0.58 + instant * 0.42;
+      }
+      if (!scrollLockRef.current && !activeSnapFrame && Math.abs(dy) > 0.5) {
+        userIntentDelta += dy;
+      }
+      lastScrollY = y;
+      lastScrollTime = now;
+      scheduleSnap();
+    };
+
+    const interruptSnap = () => {
+      if (!scrollLockRef.current && !activeSnapFrame) return;
+      cancelActiveSnap();
+      scrollLockRef.current = false;
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      if (scrollLockRef.current || activeSnapFrame) interruptSnap();
+      if (Math.abs(e.deltaY) >= 2) {
+        userIntentDelta += e.deltaY;
+        const wheelV = e.deltaY * 0.028;
+        scrollVelocityPxMs = scrollVelocityPxMs * 0.5 + wheelV * 0.5;
+      }
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("scrollend", snapAfterScrollEnd);
+    window.addEventListener("wheel", onWheel, { passive: true });
+    window.addEventListener("touchstart", interruptSnap, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("scrollend", snapAfterScrollEnd);
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("touchstart", interruptSnap);
+      cancelActiveSnap();
+      clearTimeout(endTimer);
+    };
   }, []);
 
   const scrollTo = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    const sectionId = checklistToSection(id);
+    pendingChecklistRef.current = id;
+    setActive(id);
+    scrollLockRef.current = true;
+    cancelActiveSnap();
+    const el = document.getElementById(sectionId);
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (el) {
+      alignSectionToTop(el, reducedMotion, 0, () => {
+        scrollLockRef.current = false;
+        lastSnapAtRef.current = Date.now();
+        pendingChecklistRef.current = null;
+        setActive(id);
+      });
+    } else {
+      scrollLockRef.current = false;
+      pendingChecklistRef.current = null;
+    }
     setMobileOpen(false);
   };
 
@@ -146,8 +596,9 @@ function WeddingSite() {
   const progress = Math.round((checked.size / SECTIONS.length) * 100);
 
   return (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-screen overflow-x-visible">
       <Toaster position="top-center" richColors />
+      <CursorHearts />
       <PaperTexture />
 
       <MobileChecklist
@@ -160,7 +611,11 @@ function WeddingSite() {
         progress={progress}
       />
 
-      <div className="mx-auto max-w-[1400px] px-4 pt-16 lg:pt-8 lg:pr-[340px]">
+      <div className="site-body relative">
+        <TetrisBackground />
+        <div className="edge-layout relative z-10 mx-auto max-w-[1400px] overflow-visible px-6 sm:px-8 md:px-10 pt-16 lg:px-8 lg:pt-8 lg:pr-[360px]">
+        <EdgePhotos />
+        <div className="edge-content">
         <HeroSection />
         <ProgramSection />
         <LokacieSection />
@@ -170,10 +625,12 @@ function WeddingSite() {
         <DresscodeSection />
         <DarySection />
         <DenSection />
+        <BrnoSection />
         <FotkySection />
         <FaqSection />
         <KontaktSection />
-        <Footer />
+        </div>
+      </div>
       </div>
 
       <DesktopChecklist
@@ -183,6 +640,227 @@ function WeddingSite() {
         onToggleCheck={toggleCheck}
         progress={progress}
       />
+    </div>
+  );
+}
+
+// ============ EDGE PHOTOS ============
+const EDGE_PHOTO_COUNT = 14;
+
+/** Voliteľné výnimky — len ak súbor nemá tvar „číslo.prípona“. */
+const EDGE_PHOTO_FILE_OVERRIDES: Partial<Record<number, string>> = {};
+
+const EDGE_PHOTO_MANIFEST = photoManifest as Record<string, string>;
+
+function resolveEdgePhotoSrc(photoNum: number) {
+  const file = EDGE_PHOTO_MANIFEST[String(photoNum)] ?? EDGE_PHOTO_FILE_OVERRIDES[photoNum];
+  return file ? sitePath(`photos/${file}`) : null;
+}
+
+function hash01(n: number, salt: number) {
+  const x = Math.sin(n * 12.9898 + salt * 78.233) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function edgePhotoVariants(col: number, side: "left" | "right", total: number) {
+  const h = col + (side === "left" ? 0 : 137);
+  const sideMul = side === "left" ? 1 : -1;
+  const progress = total > 1 ? col / (total - 1) : 0;
+  const endBias = progress * progress;
+
+  const baseSpacer = 0.45 + hash01(h, 4) * 1.35;
+  const spacer =
+    side === "left"
+      ? baseSpacer * (1 - endBias * 0.45)
+      : baseSpacer * (1 + endBias * 1.05);
+
+  return {
+    rot: (hash01(h, 1) * 22 - 11) * sideMul + (side === "right" ? endBias * 6 : endBias * -4),
+    shift: (hash01(h, 2) * 34 - 17) * (side === "left" ? 1 : -1) + (side === "right" ? endBias * 14 : endBias * -8),
+    nudgeY: hash01(h, 3) * 36 - 18 + (side === "right" ? endBias * 32 : endBias * -14),
+    spacer,
+  };
+}
+
+function edgeTrailingSpacer(side: "left" | "right") {
+  return side === "left" ? 0.3 : 2.85;
+}
+
+/**
+ * Popisky pod okrajovými fotkami — formát zobrazenia: „miesto, rok“.
+ *
+ * Číslo fotky = názov súboru v public/photos/ (napr. 4.jpeg):
+ *   1  … 14  → ľavý okraj (hore → dole)
+ *   15 … 28  → pravý okraj (hore → dole)
+ *
+ * Stačí vložiť súbor ako „číslo.prípona“ do public/photos/ — manifest sa synchronizuje automaticky pri npm run dev.
+ * Neštandardný názov → EDGE_PHOTO_FILE_OVERRIDES vyššie.
+ */
+const EDGE_PHOTO_CAPTIONS: { place: string; year: string }[] = [
+  // 1 — ľavý okraj, hore
+  { place: "Le Mont-Saint-Michel, FR", year: "2025" },
+  // 2
+  { place: "Smolenice, SK", year: "2020" },
+  // 3
+  { place: "Brno, CZ", year: "2023" },
+  // 4
+  { place: "Praha", year: "2022" },
+  // foto_5
+  { place: "Paris, FR", year: "2025" },
+  // foto_6
+  { place: "Paris, FR", year: "2025" },
+  // foto_7
+  { place: "Brno, CZ", year: "2022" },
+  // foto_8
+  { place: "Brno, CZ", year: "2026" },
+  // foto_9
+  { place: "Muráno, IT", year: "2025" },
+  // foto_10
+  { place: "Skiathos, GR", year: "2021" },
+  // foto_11
+  { place: "Santorini, GR", year: "2025" },
+  // foto_12
+  { place: "Brno, CZ", year: "2022" },
+  // foto_13
+  { place: "Atény, GR", year: "2025" },
+  // foto_14 — ľavý okraj, dole
+  { place: "Fuerteventura, ES", year: "2023" },
+  // foto_15 — pravý okraj, hore
+  { place: "Chtelnica, SK", year: "2018" },
+  // foto_16
+  { place: "Kriváň, SK", year: "2020" },
+  // foto_17
+  { place: "Tokio, JP", year: "2026" },
+  // foto_18
+  { place: "San Francisco, US", year: "2026" },
+  // foto_19
+  { place: "Brno, CZ", year: "2023" },
+  // foto_20
+  { place: "Brno, CZ", year: "2020" },
+  // foto_21
+  { place: "Ostrov Man, IM", year: "2022" },
+  // foto_22
+  { place: "Špačince, SK", year: "2020" },
+  // foto_23
+  { place: "Caorle, IT", year: "2025" },
+  // foto_24
+  { place: "Orava, SK", year: "2018" },
+  // foto_25
+  { place: "Nantes, FR", year: "2025" },
+  // foto_26
+  { place: "Brno, CZ", year: "2023" },
+  // foto_27
+  { place: "Pafos, CY", year: "2022" },
+  // foto_28 — pravý okraj, dole
+  { place: "Brno, CZ", year: "2022" },
+];
+
+function edgePhotoCaption(index: number) {
+  const { place, year } = EDGE_PHOTO_CAPTIONS[index] ?? { place: "", year: "" };
+  if (place && year) return `${place}, ${year}`;
+  if (place) return place;
+  if (year) return year;
+  return "miesto, rok";
+}
+
+function edgePhotoCaptionIsPlaceholder(index: number) {
+  const { place, year } = EDGE_PHOTO_CAPTIONS[index] ?? { place: "", year: "" };
+  return !place && !year;
+}
+
+/** Foto 8–10 — výraznejší sklon pri leveloch 08–10 */
+const EDGE_PHOTO_ROT_OVERRIDES: Record<number, number> = {
+  7: -6,
+  8: 5,
+  9: -4.5,
+  14: 3.5,
+  15: -3.5,
+};
+
+function polaroidPlaceholder(n: number) {
+  const hues = [350, 85, 190, 20];
+  const h = hues[n % hues.length];
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='250' height='330' viewBox='0 0 250 330'>
+    <rect width='250' height='330' fill='hsl(${h} 35% 88%)'/>
+    <text x='125' y='170' text-anchor='middle' font-family='sans-serif' font-size='22' fill='hsl(${h} 25% 28%)'>Foto ${n + 1}</text>
+  </svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+function EdgePolaroid({ index, columnIndex, side, total }: { index: number; columnIndex: number; side: "left" | "right"; total: number }) {
+  const v = edgePhotoVariants(columnIndex, side, total);
+  const rot = EDGE_PHOTO_ROT_OVERRIDES[index] ?? v.rot;
+  const photoNum = index + 1;
+  const photoSrc = resolveEdgePhotoSrc(photoNum);
+  const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [photoSrc]);
+
+  const showPlaceholder = !photoSrc || imgFailed;
+
+  return (
+    <div
+      className="edge-polaroid cursor-pointer"
+      style={{
+        transform: `translate(${v.shift}px, ${v.nudgeY}px) rotate(${rot}deg)`,
+      }}
+    >
+      <div className="tape tape-center" />
+      <img
+        key={photoSrc ?? `ph-${index}`}
+        src={showPlaceholder ? polaroidPlaceholder(index) : photoSrc}
+        alt=""
+        className="edge-photo-img"
+        decoding="async"
+        loading="lazy"
+        onError={() => setImgFailed(true)}
+      />
+      <p
+        className={`edge-photo-caption font-hand ${edgePhotoCaptionIsPlaceholder(index) ? "edge-photo-caption--placeholder" : ""}`}
+      >
+        {edgePhotoCaption(index)}
+      </p>
+    </div>
+  );
+}
+
+function EdgeGallery({ side, indices }: {
+  side: "left" | "right";
+  indices: number[];
+}) {
+  const total = indices.length;
+  return (
+    <div className={`edge-gallery edge-gallery--${side}`}>
+      {indices.map((index, col) => (
+        <span key={`${side}-${index}`} className="contents">
+          {col > 0 && (
+            <div
+              className="edge-spacer"
+              style={{ flexGrow: edgePhotoVariants(col - 1, side, total).spacer }}
+              aria-hidden
+            />
+          )}
+          <EdgePolaroid index={index} columnIndex={col} side={side} total={total} />
+        </span>
+      ))}
+      <div
+        className="edge-spacer edge-spacer--trail"
+        style={{ flexGrow: edgeTrailingSpacer(side) }}
+        aria-hidden
+      />
+    </div>
+  );
+}
+
+function EdgePhotos() {
+  const left = Array.from({ length: EDGE_PHOTO_COUNT }, (_, i) => i);
+  const right = Array.from({ length: EDGE_PHOTO_COUNT }, (_, i) => i + EDGE_PHOTO_COUNT);
+  return (
+    <div className="edge-galleries" aria-hidden>
+      <EdgeGallery side="left" indices={left} />
+      <EdgeGallery side="right" indices={right} />
     </div>
   );
 }
@@ -203,10 +881,10 @@ function PaperTexture() {
 
 // ============ CHECKLIST UI ============
 function ChecklistItem({
-  s, done, active, onPick, onToggleCheck, index,
+  s, done, active, onPick, onToggleCheck,
 }: {
   s: (typeof SECTIONS)[number];
-  done: boolean; active: boolean; index: number;
+  done: boolean; active: boolean;
   onPick: (id: string) => void;
   onToggleCheck: (id: string) => void;
 }) {
@@ -237,7 +915,6 @@ function ChecklistItem({
         className="flex-1 text-left font-hand text-lg leading-tight text-[color:var(--ink)]"
         style={{ textDecoration: done ? "line-through" : "none" }}
       >
-        <span className="opacity-50 mr-1">{String(index + 1).padStart(2, "0")}.</span>
         {s.label}
       </button>
       {active && <ChevronRight className="ml-auto h-4 w-4 text-[color:var(--bordo)]" />}
@@ -253,9 +930,10 @@ function DesktopChecklist({
   onToggleCheck: (id: string) => void;
 }) {
   return (
-    <aside className="fixed right-6 top-6 bottom-6 z-30 hidden w-[320px] lg:block">
-      <div className="paper-card notebook-lines relative h-full overflow-hidden p-5">
+    <aside className="fixed right-6 top-6 bottom-6 z-30 hidden w-[320px] overflow-visible lg:block">
+      <div className="paper-card notebook-lines relative h-full overflow-visible p-5 pt-8">
         <div className="tape" />
+        <div className="flex h-full min-h-0 flex-col">
         <div className="mb-3 flex items-baseline justify-between border-b-2 border-dashed border-[color:var(--ink)]/20 pb-2">
           <h2 className="font-marker text-xl text-[color:var(--bordo)]">Quest log</h2>
           <span className="font-hand text-xl text-[color:var(--ink)]/70">{progress}%</span>
@@ -264,14 +942,15 @@ function DesktopChecklist({
           <div className="h-full rounded-full bg-[color:var(--turquoise)] transition-all" style={{ width: `${progress}%` }} />
         </div>
         <p className="mb-2 font-hand text-xs text-[color:var(--ink)]/60">Odčiarkni si sám, keď máš hotovo ✍️</p>
-        <div className="space-y-0.5 overflow-y-auto pr-1" style={{ maxHeight: "calc(100% - 120px)" }}>
-          {SECTIONS.map((s, i) => (
+        <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1">
+          {SECTIONS.map((s) => (
             <ChecklistItem
-              key={s.id} s={s} index={i}
+              key={s.id} s={s}
               done={checked.has(s.id)} active={active === s.id}
               onPick={onPick} onToggleCheck={onToggleCheck}
             />
           ))}
+        </div>
         </div>
       </div>
     </aside>
@@ -301,9 +980,9 @@ function MobileChecklist({
       </button>
       {open && (
         <div className="paper-card mx-3 mt-2 max-h-[70vh] overflow-y-auto p-3">
-          {SECTIONS.map((s, i) => (
+          {SECTIONS.map((s) => (
             <ChecklistItem
-              key={s.id} s={s} index={i}
+              key={s.id} s={s}
               done={checked.has(s.id)} active={active === s.id}
               onPick={onPick} onToggleCheck={onToggleCheck}
             />
@@ -316,13 +995,13 @@ function MobileChecklist({
 
 // ============ Section wrapper ============
 function Section({
-  id, chapter, title, children,
-}: { id: string; chapter: string; title: string; children: React.ReactNode }) {
+  id, level, title, children,
+}: { id: string; level: string; title: string; children: React.ReactNode }) {
   return (
-    <section id={id} className="scroll-mt-24 py-16 lg:py-24">
+    <section id={id} className="scroll-mt-[4.25rem] py-16 pb-24 lg:scroll-mt-4 lg:py-24 lg:pb-32">
       <div className="mb-8 flex items-end gap-4">
         <span className="font-marker text-sm uppercase tracking-widest text-[color:var(--turquoise)]">
-          {chapter}
+          {level}
         </span>
         <div className="h-px flex-1 border-t-2 border-dashed border-[color:var(--gold)]/40" />
       </div>
@@ -382,35 +1061,64 @@ function downloadIcs() {
 }
 
 function AddToCalendar() {
-  const [open, setOpen] = useState(false);
   return (
-    <div className="relative mt-4">
+    <div className="group relative z-20 mt-4">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-full border-2 border-dashed border-[color:var(--bordo)] px-4 py-2 font-marker text-xs uppercase tracking-wide text-[color:var(--bordo)] hover:bg-[color:var(--bordo)]/10 transition"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-full border-2 border-dashed border-[color:var(--bordo)] px-4 py-2 font-marker text-xs uppercase tracking-wide text-[color:var(--bordo)] transition hover:bg-[color:var(--bordo)]/10"
       >
         <Download className="h-4 w-4" /> Pridať do kalendára
-        <ChevronDown className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className="h-3 w-3 transition-transform group-hover:rotate-180 group-focus-within:rotate-180" />
       </button>
-      {open && (
-        <div className="mt-2 space-y-1.5 rounded-md border border-dashed border-[color:var(--ink)]/30 bg-white/60 p-2">
+      <div className="pointer-events-none absolute left-0 right-0 top-full z-50 pt-1 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+        <div className="space-y-1.5 rounded-md border border-dashed border-[color:var(--ink)]/30 bg-white/95 p-2 shadow-lg">
           <a
             href={GCAL_URL} target="_blank" rel="noreferrer"
-            onClick={() => setOpen(false)}
             className="flex items-center gap-2 rounded px-2 py-1.5 font-hand text-base text-[color:var(--ink)] hover:bg-[color:var(--gold)]/20"
           >
             <span aria-hidden>📅</span> Google Calendar
           </a>
           <button
             type="button"
-            onClick={() => { downloadIcs(); setOpen(false); }}
+            onClick={downloadIcs}
             className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left font-hand text-base text-[color:var(--ink)] hover:bg-[color:var(--gold)]/20"
           >
             <span aria-hidden>🍎</span> Apple / Outlook (.ics)
           </button>
         </div>
-      )}
+      </div>
+    </div>
+  );
+}
+
+function HeroMobilePhoto() {
+  const photoSrc = resolveEdgePhotoSrc(1);
+  const [imgFailed, setImgFailed] = useState(false);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [photoSrc]);
+
+  const showPlaceholder = !photoSrc || imgFailed;
+
+  return (
+    <div className="hero-intro-photo -mt-2 mb-1 flex w-full justify-end pr-10 sm:pr-14 md:pr-20 lg:hidden">
+      <div className="edge-polaroid w-[2.9rem] max-w-[44vw] rotate-[5deg] pointer-events-none cursor-default p-0.5 pb-1 shadow-sm">
+        <div className="tape tape-center scale-[0.58]" />
+        <img
+          src={showPlaceholder ? polaroidPlaceholder(0) : photoSrc}
+          alt="Natália a Oto"
+          className="edge-photo-img"
+          decoding="async"
+          loading="eager"
+          onError={() => setImgFailed(true)}
+        />
+        <p
+          className={`edge-photo-caption !mt-0.5 !min-h-0 !px-0 !text-[0.54rem] !leading-tight font-hand ${edgePhotoCaptionIsPlaceholder(0) ? "edge-photo-caption--placeholder" : ""}`}
+        >
+          {edgePhotoCaption(0)}
+        </p>
+      </div>
     </div>
   );
 }
@@ -418,55 +1126,45 @@ function AddToCalendar() {
 function HeroSection() {
   const c = useCountdown(CONFIG.dateISO);
   return (
-    <section id="hero" className="scroll-mt-24 pt-8 lg:pt-16 pb-12">
-      <div className="mb-4 flex items-center gap-3">
-        <span className="font-marker text-xs uppercase tracking-widest text-[color:var(--turquoise)]">
-          Prológ · Chapter 00
-        </span>
-      </div>
+    <section id="hero" className="pt-8 lg:pt-16 pb-6">
       <div className="grid gap-8 lg:grid-cols-[1.3fr_1fr] items-center">
         <div>
-          <p className="font-hand text-2xl text-[color:var(--gold)] mb-2">
+          <p className="font-hand text-2xl text-[color:var(--paper)] mb-2">
             Zdá sa, že si bol/a pozvaný/á na svadbu.
           </p>
-          <h1 className="font-display text-6xl md:text-8xl lg:text-9xl leading-[0.9] text-[color:var(--paper)]">
-            <span className="italic">Natália</span>
-            <span className="block font-hand text-5xl md:text-7xl text-[color:var(--blush)] my-2">&amp;</span>
-            <span className="italic">Oto</span>
+          <h1 className="font-pixel text-5xl md:text-6xl lg:text-7xl leading-[1.3] text-[color:var(--gold)]">
+            <span>Natália</span>
+            <span className="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-1">
+              <span className="font-hand mx-4 md:mx-6 text-4xl md:text-5xl lg:text-6xl text-[color:var(--blush)]">&amp;</span>
+              <span>Oto</span>
+            </span>
           </h1>
+          <HeroMobilePhoto />
           <div className="ticker-line my-6 max-w-xl" />
           <p className="max-w-xl text-lg text-[color:var(--paper)]/80 leading-relaxed">
             Spúšťame náš najväčší co-op quest a veľmi chceme, aby si bol/a pri tom.
             Ulož si dátum, prejdi checklist a daj nám vedieť, či sa vidíme na tanečnom parkete.
+            Poprosíme ťa aj o potvrdenie rezervácie ubytovania pre vás — alternatívne si môžeš
+            nájsť ubytovanie po vlastnej osi.
           </p>
 
           <div className="mt-8 flex flex-wrap gap-3">
             <a
               href="#rsvp"
-              className="inline-flex items-center gap-2 rounded-full bg-[color:var(--gold)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--bordo-deep)] shadow-[0_6px_0_-2px_rgba(0,0,0,0.4)] hover:translate-y-0.5 hover:shadow-[0_4px_0_-2px_rgba(0,0,0,0.4)] transition"
+              className="inline-flex items-center gap-2 rounded-full bg-[color:var(--paper)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--bordo-deep)] shadow-[0_6px_0_-2px_rgba(0,0,0,0.4)] hover:translate-y-0.5 hover:shadow-[0_4px_0_-2px_rgba(0,0,0,0.4)] transition"
             >
               <Heart className="h-4 w-4" /> Potvrdzujem účasť
-            </a>
-            <a
-              href="#program"
-              className="inline-flex items-center gap-2 rounded-full border-2 border-dashed border-[color:var(--blush)] px-6 py-3 font-hand text-lg text-[color:var(--blush)] hover:bg-[color:var(--blush)]/10 transition"
-            >
-              <MapPin className="h-4 w-4" /> Pozrieť program
             </a>
           </div>
         </div>
 
-        <div className="relative">
-          <div className="paper-card relative mx-auto max-w-sm p-6 rotate-2">
+        <div className="relative z-40 ml-4 md:ml-8">
+          <div className="paper-card relative mx-auto max-w-sm overflow-visible p-6 rotate-2">
             <div className="tape" />
+            <p className="absolute top-5 right-5 font-body text-sm text-[color:var(--ink)]">2026</p>
             <p className="font-marker text-xs uppercase tracking-widest text-[color:var(--bordo)]">Save the date</p>
             <div className="mt-3 text-center">
-              <p className="font-hand text-2xl text-[color:var(--ink)]/70">Október</p>
-              <p className="font-display text-8xl leading-none text-[color:var(--bordo)]">10</p>
-              <p className="font-hand text-3xl text-[color:var(--ink)]">2026</p>
-              <div className="mt-3 flex justify-center">
-                <Heart className="h-6 w-6 fill-[color:var(--blush)] text-[color:var(--bordo)]" />
-              </div>
+              <p className="font-display text-6xl md:text-7xl font-bold leading-none text-[color:var(--bordo)]">10</p>
               <p className="mt-2 font-hand text-xl text-[color:var(--ink)]/70">{CONFIG.city}</p>
             </div>
             <MiniCalendar />
@@ -475,15 +1173,15 @@ function HeroSection() {
         </div>
       </div>
 
-      <div className="mt-10 grid grid-cols-4 gap-3 max-w-2xl">
+      <div className="mt-20 grid grid-cols-4 gap-3 max-w-2xl">
         {[
           { l: "dní", v: c.days },
           { l: "hodín", v: c.hours },
           { l: "minút", v: c.minutes },
           { l: "sekúnd", v: c.seconds },
         ].map((x) => (
-          <div key={x.l} className="paper-card p-3 text-center -rotate-1 even:rotate-1">
-            <div className="font-display text-3xl md:text-4xl text-[color:var(--bordo)]">
+          <div key={x.l} className="paper-card !bg-[color:var(--gold)] p-3 text-center -rotate-1 even:rotate-1">
+            <div className="font-pixel text-xl md:text-2xl text-[color:var(--bordo)]">
               {String(x.v).padStart(2, "0")}
             </div>
             <div className="font-hand text-sm text-[color:var(--ink)]/70">{x.l}</div>
@@ -509,13 +1207,24 @@ function MiniCalendar() {
         {cells.map((d, i) => {
           const is10 = d === 10;
           return (
-            <div key={i} className={`aspect-square grid place-items-center rounded ${is10 ? "bg-[color:var(--bordo)] text-[color:var(--gold)] font-bold" : "text-[color:var(--ink)]/80"}`}>
+            <div
+              key={i}
+              className={`aspect-square grid place-items-center rounded ${
+                is10
+                  ? "cal-day-highlight relative cursor-pointer overflow-visible bg-[color:var(--bordo)] text-[color:var(--gold)] font-bold"
+                  : "text-[color:var(--ink)]/80"
+              }`}
+            >
               {is10 ? (
-                <span className="relative">
-                  10
-                  <Heart className="absolute -right-2 -top-2 h-3 w-3 fill-[color:var(--blush)] text-[color:var(--blush)]" />
-                </span>
-              ) : d}
+                <>
+                  <svg aria-hidden viewBox="0 0 24 24" className="cal-heart-doodle">
+                    <path d="M11.8 19.6c0 0-8.4-6.2-8.9-11.1-.4-2.8 1.9-5.3 4.7-5.1 1.8.1 3.2 1.6 3.8 2.9.6-1.3 2.1-2.8 4.1-2.6 2.5.3 4.3 2.7 3.9 5.2-.6 5.1-8.6 10.7-8.6 10.7z" />
+                  </svg>
+                  <span>{d}</span>
+                </>
+              ) : (
+                d
+              )}
             </div>
           );
         })}
@@ -526,72 +1235,144 @@ function MiniCalendar() {
 
 // ============ PROGRAM ============
 const PROGRAM = [
-  { time: "10:00", title: "Výjazd z domu", icon: "🚗", place: null, url: null },
+  { time: "10:00–11:00", title: "Výjazd", icon: "🚗", place: null, url: null },
   { time: "13:00", title: "Check-in v hoteli", icon: "🛏️", place: "Hotel Continental", url: CONFIG.maps.hotel },
-  { time: "14:00", title: "Zraz", icon: "👋", place: "Moravské náměstí", url: CONFIG.maps.zraz },
+  { time: "14:30–15:00", title: "Zraz", icon: "🥂", place: "Recepcia hotela Continental", url: CONFIG.maps.hotel },
   { time: "15:30", title: "Obrad", icon: "💍", place: "Kostol sv. Jakuba", url: CONFIG.maps.kostol },
   { time: "17:30", title: "Hostina", icon: "🍽️", place: "Kumst", url: CONFIG.maps.kumst },
   { time: "18:30", title: "Prvý tanec", icon: "💃", place: null, url: null },
-  { time: "22:00", title: "Raut", icon: "🍕", place: null, url: null },
-  { time: "02:00", title: "Dozvuky", icon: "🌙", place: null, url: null },
+  { time: "22:00", title: "Raut", icon: "🌮", place: null, url: null },
+  { time: "02:00", title: "Dozvuky", icon: "🪩", place: null, url: null },
 ];
+
+const PROGRAM_TRAIL_WIDE = new Set(["Check-in v hoteli", "Zraz"]);
+
+type TrailPoint = { x: number; y: number };
+
+/** Zastávky — širšie vlnky, bez striktného striedania, ku koncu viac doprava */
+const PROGRAM_TRAIL_STOPS: TrailPoint[] = [
+  { x: 10, y: 3 },
+  { x: 32, y: 17 },
+  { x: 14, y: 31 },
+  { x: 34, y: 45 },
+  { x: 16, y: 59 },
+  { x: 31, y: 73 },
+  { x: 22, y: 85 },
+  { x: 38, y: 97 },
+];
+
+/** Šírka jednotlivých oblúkov — plynulé, nerovnomerné */
+const PROGRAM_TRAIL_BULGES = [9, -13, 8, -14, 11, -10, 16];
+
+function buildProgramTrailPath(stops: TrailPoint[]) {
+  if (stops.length < 2) return "";
+  let d = `M ${stops[0].x} ${stops[0].y}`;
+  for (let i = 1; i < stops.length; i++) {
+    const prev = stops[i - 1];
+    const curr = stops[i];
+    const bulge = PROGRAM_TRAIL_BULGES[i - 1] ?? 10;
+    const cpx = (prev.x + curr.x) / 2 + bulge;
+    const cpy = (prev.y + curr.y) / 2;
+    d += ` Q ${cpx} ${cpy} ${curr.x} ${curr.y}`;
+  }
+  return d;
+}
+
+function ProgramTrail() {
+  const pathD = buildProgramTrailPath(PROGRAM_TRAIL_STOPS);
+
+  return (
+    <div className="program-trail">
+      <svg
+        className="program-trail-svg"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+        aria-hidden
+      >
+        <path d={pathD} className="program-trail-line" vectorEffect="non-scaling-stroke" />
+      </svg>
+
+      {PROGRAM.map((p, i) => {
+        const stop = PROGRAM_TRAIL_STOPS[i];
+        const isWide = PROGRAM_TRAIL_WIDE.has(p.title);
+
+        return (
+          <div
+            key={p.title}
+            className="program-trail-stop"
+            style={{ left: `${stop.x}%`, top: `${stop.y}%` }}
+          >
+            <span
+              className="program-trail-node"
+              style={{ transform: `rotate(${(i % 2 ? 1 : -1) * 4}deg)` }}
+              aria-hidden
+            >
+              {p.icon}
+            </span>
+            <div className={`program-trail-label${isWide ? " program-trail-label--wide" : ""}`}>
+              <div className={`flex items-baseline gap-x-3 gap-y-1${isWide ? " flex-nowrap" : " flex-wrap"}`}>
+                <span className="program-trail-time font-hand text-xl md:text-2xl">
+                  {p.time}
+                </span>
+                <h3 className="program-trail-title font-display text-2xl">{p.title}</h3>
+                {p.place && p.url && (
+                  <a
+                    href={p.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="program-trail-place font-hand text-xl transition"
+                  >
+                    📍 {p.place}
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function ProgramSection() {
   return (
-    <Section id="program" chapter="Chapter 01" title="Program dňa">
+    <Section id="program" level="Level 01" title="Program dňa">
       <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-2xl">
         Level 10.10.2026 má viac checkpointov. Tu je mapa, aby si neskončil/a v side queste v zlom bare.
       </p>
-
-      <ol className="relative space-y-6">
-        <div className="absolute left-6 top-2 bottom-2 w-0.5 border-l-2 border-dashed border-[color:var(--gold)]/50" />
-        {PROGRAM.map((p, i) => (
-          <li key={i} className="relative pl-16">
-            <span className="absolute left-0 top-1 grid h-12 w-12 place-items-center rounded-full bg-[color:var(--gold)] text-2xl shadow-lg" style={{ transform: `rotate(${(i % 2 ? 1 : -1) * 4}deg)` }}>
-              {p.icon}
-            </span>
-            <div className="paper-card p-4">
-              <div className="flex flex-wrap items-baseline gap-3">
-                <span className="font-marker text-lg text-[color:var(--bordo)]">{p.time}</span>
-                <h3 className="font-display text-2xl text-[color:var(--ink)]">{p.title}</h3>
-              </div>
-              {p.place && (
-                <p className="mt-1 font-hand text-lg text-[color:var(--ink)]/70">📍 {p.place}</p>
-              )}
-              {p.url && (
-                <a href={p.url} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-sm text-[color:var(--bordo)] underline">
-                  Otvoriť v Google Maps <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
-            </div>
-          </li>
-        ))}
-      </ol>
+      <ProgramTrail />
     </Section>
   );
 }
 
 // ============ LOKÁCIE ============
-const LOKACIE = [
-  { name: "Hotel Continental", desc: "Ubytovanie & check-in. Naša štartovacia zóna.", addr: "Brno – adresa placeholder", url: CONFIG.maps.hotel },
-  { name: "Kostol sv. Jakuba", desc: "Obrad. Prosíme, príďte s 15 min rezervou.", addr: "Jakubské náměstí, Brno", url: CONFIG.maps.kostol },
-  { name: "Kumst", desc: "Hostina, prvý tanec, raut a dozvuky.", addr: "Brno – adresa placeholder", url: CONFIG.maps.kumst },
-];
-
 function LokacieSection() {
   return (
-    <Section id="lokacie" chapter="Chapter 02" title="Lokácie">
+    <Section id="lokacie" level="Level 02" title="Lokácie">
       <div className="grid gap-6 md:grid-cols-3">
-        {LOKACIE.map((l, i) => (
+        {CONFIG.locations.map((l, i) => (
           <div key={l.name} className="paper-card p-5" style={{ transform: `rotate(${(i - 1) * 0.6}deg)` }}>
-            <div className="mb-3 grid aspect-video place-items-center rounded-md bg-gradient-to-br from-[color:var(--turquoise)]/30 to-[color:var(--blush)]/30 text-4xl">
-              <MapPin className="h-10 w-10 text-[color:var(--bordo)]" />
+            <div className="mb-3 overflow-hidden rounded-md bg-gradient-to-br from-[color:var(--turquoise)]/30 to-[color:var(--blush)]/30">
+              {"image" in l && l.image ? (
+                <img
+                  src={sitePath(l.image)}
+                  alt={l.name}
+                  className="aspect-video w-full object-cover"
+                  loading="lazy"
+                />
+              ) : (
+                <div className="grid aspect-video place-items-center text-4xl">
+                  <MapPin className="h-10 w-10 text-[color:var(--bordo)]" />
+                </div>
+              )}
             </div>
             <h3 className="font-display text-2xl text-[color:var(--bordo)]">{l.name}</h3>
             <p className="mt-1 font-hand text-lg text-[color:var(--ink)]/80">{l.desc}</p>
             <p className="mt-2 text-sm text-[color:var(--ink)]/60">{l.addr}</p>
             <a
-              href={l.url} target="_blank" rel="noreferrer"
+              href={l.url}
+              target="_blank"
+              rel="noreferrer"
               className="mt-3 inline-flex items-center gap-1 rounded-full border border-[color:var(--bordo)] px-3 py-1.5 text-sm text-[color:var(--bordo)] hover:bg-[color:var(--bordo)] hover:text-[color:var(--paper)] transition"
             >
               Navigovať v Google Maps <ExternalLink className="h-3 w-3" />
@@ -602,25 +1383,53 @@ function LokacieSection() {
 
       <div className="paper-card mt-8 p-4">
         <p className="font-hand text-xl text-[color:var(--ink)] mb-3">🗺️ Spoločná mapa</p>
-        <div className="grid aspect-[16/7] place-items-center rounded-md bg-gradient-to-br from-[color:var(--turquoise)]/40 via-[color:var(--gold)]/20 to-[color:var(--blush)]/40">
-          <p className="font-marker text-lg text-[color:var(--bordo)]">Google Maps embed placeholder</p>
+        <WeddingMap
+          locations={CONFIG.locations}
+          customImage={CONFIG.mapCustomImage ? sitePath(CONFIG.mapCustomImage.replace(/^\//, "")) : undefined}
+        />
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 font-hand text-base text-[color:var(--ink)]/75">
+          {CONFIG.locations.map((l) => (
+            <span key={l.id} className="inline-flex items-center gap-1.5 text-[color:var(--bordo)]">
+              <MapMarkerIcon id={l.id} />
+              <span className="text-[color:var(--ink)]/75">{l.name}</span>
+            </span>
+          ))}
         </div>
       </div>
     </Section>
   );
 }
 
-// ============ FORM UTILITIES ============
+// ============ FORM UTILITIES (Formspree – funguje aj na statickom github.io) ============
+function getFormEndpoint(formName: string) {
+  const specific = CONFIG.formEndpoints[formName as keyof typeof CONFIG.formEndpoints];
+  return specific || CONFIG.formEndpoint;
+}
+
 async function submitForm(formName: string, data: Record<string, unknown>) {
   if ((data as { hp?: string }).hp) return { ok: true };
+  const endpoint = getFormEndpoint(formName);
+  if (!endpoint || endpoint.includes("your-form-id") || endpoint.includes("your-endpoint")) {
+    console.warn(`Formspree endpoint pre „${formName}“ nie je nastavený (VITE_FORMSPREE_*).`);
+    return { ok: false };
+  }
   try {
-    const res = await fetch(CONFIG.formEndpoint, {
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ _form: formName, ...data }),
+      body: JSON.stringify({
+        _subject: `Svadba · ${formName}`,
+        _form: formName,
+        ...data,
+      }),
     });
+    if (!res.ok) {
+      const err = await res.json().catch(() => null) as { error?: string } | null;
+      console.error("Formspree error:", err?.error ?? res.status);
+    }
     return { ok: res.ok };
-  } catch {
+  } catch (err) {
+    console.error("Formspree network error:", err);
     return { ok: false };
   }
 }
@@ -636,17 +1445,33 @@ function RsvpSection() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [attending, setAttending] = useState<"yes" | "no">("yes");
-  // Additional guests only when main attending = yes
-  const [extras, setExtras] = useState<{ id: string; name: string; attending: boolean }[]>([]);
+  const [extras, setExtras] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(RSVP_SENT_KEY) === "1") setSent(true);
+      const stored = readGuests();
+      if (stored.length > 0) {
+        const main = stored.find((g) => g.id === "main") ?? stored[0];
+        setName(main.name);
+        setAttending(main.attending ? "yes" : "no");
+        setExtras(stored.filter((g) => g.id !== "main").map((g) => ({ id: g.id, name: g.name })));
+      }
+    } catch { /* noop */ }
+  }, []);
 
   function addExtra() {
-    setExtras((p) => [...p, { id: makeId(), name: "", attending: true }]);
+    setExtras((p) => [...p, { id: makeId(), name: "" }]);
   }
   function removeExtra(id: string) {
     setExtras((p) => p.filter((e) => e.id !== id));
   }
-  function updateExtra(id: string, patch: Partial<{ name: string; attending: boolean }>) {
-    setExtras((p) => p.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  function updateExtra(id: string, guestName: string) {
+    setExtras((p) => p.map((e) => (e.id === id ? { ...e, name: guestName } : e)));
+  }
+  function editRsvp() {
+    setSent(false);
+    try { window.localStorage.removeItem(RSVP_SENT_KEY); } catch { /* noop */ }
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -654,27 +1479,33 @@ function RsvpSection() {
     if (!name.trim()) { toast.error("Vyplň prosím meno."); return; }
     if (!phone.trim()) { toast.error("Vyplň prosím telefón."); return; }
 
-    // Store guest list (main + extras that are attending)
-    const list: Guest[] = [];
-    list.push({ id: "main", name: name.trim(), attending: attending === "yes" });
-    extras.forEach((e) => {
-      if (e.name.trim()) list.push({ id: e.id, name: e.name.trim(), attending: e.attending });
+    const isAttending = attending === "yes";
+    const list: Guest[] = [{ id: "main", name: name.trim(), attending: isAttending }];
+    extras.forEach((g) => {
+      if (g.name.trim()) list.push({ id: g.id, name: g.name.trim(), attending: isAttending });
     });
     writeGuests(list);
 
+    const fd = new FormData(e.currentTarget);
     setLoading(true);
     const r = await submitForm("rsvp", {
+      hp: fd.get("hp"),
       name, phone, attending,
       guests: list,
+      guestNames: list.map((g) => g.name).join(", "),
     });
     setLoading(false);
-    if (r.ok) { setSent(true); toast.success("Quest completed! RSVP odoslané ✨"); }
-    else toast.error("Nepodarilo sa odoslať. Skús to znova alebo nám napíš.");
+    if (r.ok) {
+      setSent(true);
+      try { window.localStorage.setItem(RSVP_SENT_KEY, "1"); } catch { /* noop */ }
+      markSectionChecked("rsvp");
+      toast.success("Quest completed! RSVP odoslané ✨");
+    } else toast.error("Nepodarilo sa odoslať. Skús to znova alebo nám napíš.");
   }
 
   if (sent) {
     return (
-      <Section id="rsvp" chapter="Chapter 03" title="Potvrď účasť">
+      <Section id="rsvp" level="Level 03" title="Potvrď účasť">
         <div className="paper-card p-8 text-center">
           <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-[color:var(--turquoise)] text-[color:var(--bordo-deep)]">
             <Check className="h-10 w-10" strokeWidth={3} />
@@ -683,28 +1514,36 @@ function RsvpSection() {
           <p className="mt-2 font-hand text-xl text-[color:var(--ink)]">
             Ďakujeme! Uložili sme si tvoju odpoveď. Uvidíme sa 10.10.2026.
           </p>
+          <button
+            type="button"
+            onClick={editRsvp}
+            className="mt-5 font-hand text-base text-[color:var(--ink)]/60 hover:text-[color:var(--bordo)]"
+          >
+            Zmeniť odpoveď
+          </button>
         </div>
       </Section>
     );
   }
 
   return (
-    <Section id="rsvp" chapter="Chapter 03" title="Potvrď účasť">
+    <Section id="rsvp" level="Level 03" title="Potvrď účasť">
       <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-2xl">
         Bez potvrdenia účasti sa quest log neuloží. Prosíme, daj nám vedieť čo najskôr.
       </p>
       <form onSubmit={onSubmit} className="paper-card p-6 md:p-8 space-y-5">
         <input type="text" name="hp" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden />
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="font-marker text-xs uppercase tracking-wider text-[color:var(--bordo)]">Meno a priezvisko *</label>
+
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-4">
+          <div className="w-full max-w-md shrink-0">
+            <label className="form-label text-sm tracking-wider">Tvoje meno *</label>
             <input
               value={name} onChange={(e) => setName(e.target.value)} required
               className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)] placeholder:text-[color:var(--ink)]/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
             />
           </div>
-          <div>
-            <label className="font-marker text-xs uppercase tracking-wider text-[color:var(--bordo)]">Telefón *</label>
+          <div className="w-full min-w-0 flex-1">
+            <label className="form-label text-sm tracking-wider">Tvoj telefón *</label>
             <input
               value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" required
               className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)] placeholder:text-[color:var(--ink)]/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
@@ -713,8 +1552,37 @@ function RsvpSection() {
         </div>
 
         <div>
-          <label className="font-marker text-xs uppercase tracking-wider text-[color:var(--bordo)]">Prídeš?</label>
-          <div className="mt-2 flex gap-2">
+          <label className="form-label text-sm mb-2 block tracking-wider">Ďalší hostia</label>
+          <div className="space-y-2">
+            {extras.map((g) => (
+              <div key={g.id} className="flex items-center gap-2">
+                <input
+                  value={g.name}
+                  onChange={(e) => updateExtra(g.id, e.target.value)}
+                  placeholder="Meno hosťa"
+                  className="w-full max-w-md rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)] placeholder:text-[color:var(--ink)]/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
+                />
+                <button
+                  type="button" onClick={() => removeExtra(g.id)}
+                  aria-label="Odstrániť hosťa"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[color:var(--ink)]/50 hover:bg-[color:var(--bordo)]/10 hover:text-[color:var(--bordo)]"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+            <button
+              type="button" onClick={addExtra}
+              className="inline-flex items-center gap-2 rounded-full border-2 border-dashed border-[color:var(--gold)] px-4 py-2 font-hand text-base text-[color:var(--gold)] hover:bg-[color:var(--gold)]/10 transition"
+            >
+              <Plus className="h-4 w-4" /> Pridať hosta
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label className="form-label text-sm tracking-wider">Prídete?</label>
+          <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => setAttending("yes")}
@@ -723,7 +1591,7 @@ function RsvpSection() {
                   ? "border-[color:var(--turquoise)] bg-[color:var(--turquoise)]/30 text-[color:var(--bordo-deep)]"
                   : "border-dashed border-[color:var(--ink)]/40 text-[color:var(--ink)] hover:border-[color:var(--turquoise)]"
               }`}
-            >Áno, prídem</button>
+            >Áno, prídeme</button>
             <button
               type="button"
               onClick={() => setAttending("no")}
@@ -732,67 +1600,12 @@ function RsvpSection() {
                   ? "border-[color:var(--bordo)] bg-[color:var(--bordo)]/15 text-[color:var(--bordo)]"
                   : "border-dashed border-[color:var(--ink)]/40 text-[color:var(--ink)] hover:border-[color:var(--bordo)]"
               }`}
-            >Nie, žiaľ neprídem</button>
+            >Nie, žiaľ neprídeme</button>
           </div>
         </div>
 
-        {attending === "yes" && (
-          <div>
-            <div className="mb-2 flex items-baseline justify-between">
-              <label className="font-marker text-xs uppercase tracking-wider text-[color:var(--bordo)]">Ďalší hostia</label>
-              <span className="font-hand text-sm text-[color:var(--ink)]/60">
-                Pridaj každú ďalšiu osobu, ktorá s tebou príde (alebo aj neprí­de).
-              </span>
-            </div>
-            <div className="space-y-2">
-              {extras.map((g) => (
-                <div key={g.id} className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-[color:var(--ink)]/30 bg-white/40 p-2">
-                  <input
-                    value={g.name}
-                    onChange={(e) => updateExtra(g.id, { name: e.target.value })}
-                    placeholder="Meno a priezvisko hosťa"
-                    className="min-w-[180px] flex-1 rounded border border-[color:var(--ink)]/20 bg-white/70 px-2 py-1.5 text-[color:var(--ink)]"
-                  />
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      onClick={() => updateExtra(g.id, { attending: true })}
-                      className={`rounded-full px-3 py-1 text-xs font-marker uppercase transition ${
-                        g.attending
-                          ? "bg-[color:var(--turquoise)]/30 text-[color:var(--bordo-deep)]"
-                          : "text-[color:var(--ink)]/60 hover:bg-[color:var(--ink)]/5"
-                      }`}
-                    >Áno</button>
-                    <button
-                      type="button"
-                      onClick={() => updateExtra(g.id, { attending: false })}
-                      className={`rounded-full px-3 py-1 text-xs font-marker uppercase transition ${
-                        !g.attending
-                          ? "bg-[color:var(--bordo)]/15 text-[color:var(--bordo)]"
-                          : "text-[color:var(--ink)]/60 hover:bg-[color:var(--ink)]/5"
-                      }`}
-                    >Nie</button>
-                  </div>
-                  <button
-                    type="button" onClick={() => removeExtra(g.id)}
-                    aria-label="Odstrániť hosťa"
-                    className="ml-auto grid h-8 w-8 place-items-center rounded-md text-[color:var(--ink)]/50 hover:bg-[color:var(--bordo)]/10 hover:text-[color:var(--bordo)]"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-              <button
-                type="button" onClick={addExtra}
-                className="inline-flex items-center gap-2 rounded-full border-2 border-dashed border-[color:var(--gold)] px-4 py-2 font-hand text-base text-[color:var(--gold)] hover:bg-[color:var(--gold)]/10 transition"
-              >
-                <Plus className="h-4 w-4" /> Pridať ďalšieho hosťa
-              </button>
-            </div>
-          </div>
-        )}
-
         <button
+          type="submit"
           disabled={loading}
           className="inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)] disabled:opacity-60"
         >
@@ -811,6 +1624,14 @@ function PokrmSection() {
   const [picks, setPicks] = useState<Record<string, MealPick>>({});
   const [sent, setSent] = useState(false);
 
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(POKRM_SENT_KEY) === "1") setSent(true);
+      const raw = window.localStorage.getItem(POKRM_DATA_KEY);
+      if (raw) setPicks(JSON.parse(raw) as Record<string, MealPick>);
+    } catch { /* noop */ }
+  }, []);
+
   function setPick(id: string, patch: Partial<MealPick>) {
     setPicks((p) => ({
       ...p,
@@ -818,20 +1639,33 @@ function PokrmSection() {
     }));
   }
 
+  function editPokrm() {
+    setSent(false);
+    try { window.localStorage.removeItem(POKRM_SENT_KEY); } catch { /* noop */ }
+  }
+
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const fd = new FormData(e.currentTarget);
     const payload = guests.map((g) => ({
       guestId: g.id, name: g.name,
       meal: picks[g.id]?.mealKey ?? CONFIG.meals[0].key,
       kids: picks[g.id]?.kids ?? false,
     }));
-    const r = await submitForm("pokrm", { meals: payload });
-    if (r.ok) { setSent(true); toast.success("Power-up vybraný ⚡"); }
-    else toast.error("Skús to prosím znova.");
+    const r = await submitForm("pokrm", { meals: payload, hp: fd.get("hp") });
+    if (r.ok) {
+      setSent(true);
+      try {
+        window.localStorage.setItem(POKRM_SENT_KEY, "1");
+        window.localStorage.setItem(POKRM_DATA_KEY, JSON.stringify(picks));
+      } catch { /* noop */ }
+      markSectionChecked("pokrm");
+      toast.success("Power-up vybraný ⚡");
+    } else toast.error("Skús to prosím znova.");
   }
 
   return (
-    <Section id="pokrm" chapter="Chapter 05" title="Vyber si svoj svadobný power-up">
+    <Section id="pokrm" level="Level 05" title="Vyber si svoj svadobný power-up">
       {guests.length === 0 ? (
         <div className="paper-card p-6 text-center">
           <p className="font-hand text-xl text-[color:var(--ink)]">
@@ -842,8 +1676,18 @@ function PokrmSection() {
           </a>
         </div>
       ) : sent ? (
-        <div className="paper-card p-6 text-center">
-          <p className="font-hand text-2xl text-[color:var(--bordo)]">Ďakujeme! Máme vaše voľby ✨</p>
+        <div className="paper-card p-8 text-center">
+          <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[color:var(--turquoise)] text-[color:var(--bordo-deep)]">
+            <Check className="h-8 w-8" strokeWidth={3} />
+          </div>
+          <p className="mt-4 font-hand text-2xl text-[color:var(--bordo)]">Ďakujeme! Máme vaše voľby ✨</p>
+          <button
+            type="button"
+            onClick={editPokrm}
+            className="mt-5 font-hand text-base text-[color:var(--ink)]/60 hover:text-[color:var(--bordo)]"
+          >
+            Zmeniť odpoveď
+          </button>
         </div>
       ) : (
         <form onSubmit={onSubmit} className="paper-card p-6 md:p-8 space-y-5">
@@ -872,7 +1716,7 @@ function PokrmSection() {
                     {CONFIG.meals.map((m) => (
                       <label
                         key={m.key}
-                        className={`cursor-pointer rounded-lg border-2 p-3 text-center transition ${
+                        className={`cursor-pointer rounded-lg border-2 p-4 text-left transition ${
                           pick === m.key
                             ? "border-[color:var(--bordo)] bg-[color:var(--gold)]/20"
                             : "border-dashed border-[color:var(--ink)]/30 hover:border-[color:var(--bordo)]"
@@ -884,8 +1728,8 @@ function PokrmSection() {
                           onChange={() => setPick(g.id, { mealKey: m.key })}
                           className="sr-only"
                         />
-                        <div className="text-3xl">{m.emoji}</div>
-                        <div className="mt-1 font-hand text-base text-[color:var(--ink)]">{m.label}</div>
+                        <div className="font-hand text-lg font-semibold text-[color:var(--bordo)]">{m.label}</div>
+                        <p className="mt-1 text-sm leading-snug text-[color:var(--ink)]/75">{m.desc}</p>
                       </label>
                     ))}
                   </div>
@@ -893,7 +1737,7 @@ function PokrmSection() {
               );
             })}
           </div>
-          <button className="inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]">
+          <button type="submit" className="inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]">
             <Send className="h-4 w-4" /> Odoslať výber
           </button>
         </form>
@@ -905,23 +1749,75 @@ function PokrmSection() {
 // ============ UBYTOVANIE ============
 type RoomEntry = {
   id: string;
-  typeKey: string;          // single | double | twin
-  guestIds: string[];       // z listu hostí
-  cots: number;             // detské postieľky (do 3r) = zdarma
-  extraBeds: number;        // prístelky = 600 Kč / noc
-  pet: boolean;             // pes = 500 Kč / noc
+  typeKey: string;
+  mainGuestId: string | null;
+  additionalGuestIds: string[];
+  cots: number;
+  extraBeds: number;
+  pet: boolean;
 };
+
+function roomGuestIds(r: RoomEntry) {
+  return [r.mainGuestId, ...r.additionalGuestIds].filter(Boolean) as string[];
+}
+
+function findGuestRoomId(rooms: RoomEntry[], guestId: string): string | null {
+  for (const room of rooms) {
+    if (roomGuestIds(room).includes(guestId)) return room.id;
+  }
+  return null;
+}
+
+function createDefaultRoom(): RoomEntry {
+  return {
+    id: makeId(),
+    typeKey: CONFIG.rooms[1].key,
+    mainGuestId: null,
+    additionalGuestIds: [],
+    cots: 0,
+    extraBeds: 0,
+    pet: false,
+  };
+}
 
 function UbytovanieSection() {
   const guests = useGuests().filter((g) => g.attending);
   const [rooms, setRooms] = useState<RoomEntry[]>([]);
+  const [notes, setNotes] = useState("");
   const [sent, setSent] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
+  const guestClickRef = useRef<{
+    key: string;
+    count: number;
+    lastAt: number;
+    timer: ReturnType<typeof setTimeout> | null;
+  }>({ key: "", count: 0, lastAt: 0, timer: null });
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(UBYTOVANIE_SENT_KEY) === "1") setSent(true);
+      const raw = window.localStorage.getItem(UBYTOVANIE_DATA_KEY);
+      if (raw) {
+        const data = JSON.parse(raw) as { rooms?: RoomEntry[]; notes?: string };
+        if (Array.isArray(data.rooms) && data.rooms.length > 0) setRooms(data.rooms);
+        if (typeof data.notes === "string") setNotes(data.notes);
+      }
+    } catch { /* noop */ }
+    setDataLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!dataLoaded || sent || guests.length === 0 || rooms.length > 0) return;
+    setRooms([createDefaultRoom()]);
+  }, [dataLoaded, sent, guests.length, rooms.length]);
+
+  function editUbytovanie() {
+    setSent(false);
+    try { window.localStorage.removeItem(UBYTOVANIE_SENT_KEY); } catch { /* noop */ }
+  }
 
   function addRoom() {
-    setRooms((r) => [...r, {
-      id: makeId(), typeKey: CONFIG.rooms[1].key, guestIds: [],
-      cots: 0, extraBeds: 0, pet: false,
-    }]);
+    setRooms((r) => [...r, createDefaultRoom()]);
   }
   function removeRoom(id: string) {
     setRooms((r) => r.filter((x) => x.id !== id));
@@ -929,12 +1825,101 @@ function UbytovanieSection() {
   function updateRoom(id: string, patch: Partial<RoomEntry>) {
     setRooms((r) => r.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   }
-  function toggleGuest(roomId: string, guestId: string) {
-    setRooms((r) => r.map((x) => {
-      if (x.id !== roomId) return x;
-      const has = x.guestIds.includes(guestId);
-      return { ...x, guestIds: has ? x.guestIds.filter((g) => g !== guestId) : [...x.guestIds, guestId] };
+  function singleGuestClick(roomId: string, guestId: string) {
+    setRooms((prev) => {
+      const takenElsewhere = prev.some(
+        (room) => room.id !== roomId && roomGuestIds(room).includes(guestId),
+      );
+      if (takenElsewhere) {
+        toast.error("Táto osoba je už priradená do inej izby.");
+        return prev;
+      }
+      return prev.map((room) => {
+      if (room.id !== roomId) return room;
+      const { mainGuestId, additionalGuestIds } = room;
+      if (mainGuestId === guestId) return room;
+      if (additionalGuestIds.includes(guestId)) {
+        return {
+          ...room,
+          mainGuestId: guestId,
+          additionalGuestIds: additionalGuestIds
+            .filter((id) => id !== guestId)
+            .concat(mainGuestId ? [mainGuestId] : []),
+        };
+      }
+      if (!mainGuestId) return { ...room, mainGuestId: guestId };
+      return { ...room, additionalGuestIds: [...additionalGuestIds, guestId] };
+    });
+    });
+  }
+  function switchMainGuest(roomId: string, guestId: string) {
+    setRooms((prev) => prev.map((room) => {
+      if (room.id !== roomId) return room;
+      const { mainGuestId, additionalGuestIds } = room;
+      if (mainGuestId === guestId) return room;
+      if (!additionalGuestIds.includes(guestId)) return room;
+      return {
+        ...room,
+        mainGuestId: guestId,
+        additionalGuestIds: additionalGuestIds
+          .filter((id) => id !== guestId)
+          .concat(mainGuestId ? [mainGuestId] : []),
+      };
     }));
+  }
+  function removeGuestFromRoom(roomId: string, guestId: string) {
+    setRooms((prev) => prev.map((room) => {
+      if (room.id !== roomId) return room;
+      if (room.mainGuestId === guestId) {
+        return {
+          ...room,
+          mainGuestId: room.additionalGuestIds[0] ?? null,
+          additionalGuestIds: room.additionalGuestIds.slice(1),
+        };
+      }
+      if (room.additionalGuestIds.includes(guestId)) {
+        return { ...room, additionalGuestIds: room.additionalGuestIds.filter((id) => id !== guestId) };
+      }
+      return room;
+    }));
+  }
+  function onGuestChipClick(roomId: string, guestId: string) {
+    const key = `${roomId}:${guestId}`;
+    const store = guestClickRef.current;
+    const now = Date.now();
+
+    if (store.key !== key) {
+      if (store.timer) clearTimeout(store.timer);
+      store.key = key;
+      store.count = 0;
+      store.lastAt = 0;
+    }
+
+    const gap = now - store.lastAt;
+    store.lastAt = now;
+    store.count += 1;
+
+    if (store.count === 2 && gap < 400) {
+      if (store.timer) clearTimeout(store.timer);
+      store.count = 0;
+      store.key = "";
+      store.lastAt = 0;
+      store.timer = null;
+      removeGuestFromRoom(roomId, guestId);
+      return;
+    }
+
+    if (store.timer) clearTimeout(store.timer);
+    store.timer = setTimeout(() => {
+      const clicks = store.count;
+      store.count = 0;
+      store.key = "";
+      store.lastAt = 0;
+      store.timer = null;
+
+      if (clicks === 1) singleGuestClick(roomId, guestId);
+      else if (clicks === 2) switchMainGuest(roomId, guestId);
+    }, 350);
   }
 
   function roomPrice(r: RoomEntry) {
@@ -946,29 +1931,76 @@ function UbytovanieSection() {
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (rooms.length === 0) { toast.error("Pridaj aspoň jednu izbu."); return; }
+    if (rooms.some((r) => !r.mainGuestId)) {
+      toast.error("Každá izba musí mať zvolenú hlavnú osobu.");
+      return;
+    }
+    const fd = new FormData(e.currentTarget);
     const payload = rooms.map((r) => ({
       typeKey: r.typeKey,
       typeLabel: CONFIG.rooms.find((x) => x.key === r.typeKey)?.label,
-      guests: r.guestIds.map((id) => guests.find((g) => g.id === id)?.name).filter(Boolean),
+      mainGuest: guests.find((g) => g.id === r.mainGuestId)?.name,
+      additionalGuests: r.additionalGuestIds.map((id) => guests.find((g) => g.id === id)?.name).filter(Boolean),
+      guests: roomGuestIds(r).map((id) => guests.find((g) => g.id === id)?.name).filter(Boolean),
       cots: r.cots, extraBeds: r.extraBeds, pet: r.pet,
       price: roomPrice(r),
     }));
-    const r = await submitForm("ubytovanie", { rooms: payload, totalPrice: total, night: "10.10.2026 → 11.10.2026" });
-    if (r.ok) { setSent(true); toast.success("Save point uložený ✨"); }
-    else toast.error("Skús to prosím znova.");
+    const r = await submitForm("ubytovanie", { rooms: payload, totalPrice: total, night: "10.10.2026 → 11.10.2026", notes, hp: fd.get("hp") });
+    if (r.ok) {
+      setSent(true);
+      try {
+        window.localStorage.setItem(UBYTOVANIE_SENT_KEY, "1");
+        window.localStorage.setItem(UBYTOVANIE_DATA_KEY, JSON.stringify({ rooms, notes }));
+      } catch { /* noop */ }
+      markSectionChecked("ubytovanie");
+      toast.success("Save point uložený ✨");
+    } else toast.error("Skús to prosím znova.");
   }
 
+  const dobryVediet = (
+    <div className="rounded-lg border border-dashed border-[color:var(--ink)]/25 bg-white/35 p-5">
+      <p className="font-marker text-xs uppercase text-[color:var(--bordo)]">Dobré vedieť</p>
+      <ul className="mt-2 space-y-1.5 font-hand text-lg text-[color:var(--ink)]">
+        <li>· Check-in od 13:00, check-out do 12:00.</li>
+        <li>· Raňajky sú v cene izby.</li>
+        <li>· Parkovanie v hoteli je za príplatok <span className="price-muted">{CONFIG.extras.parking} Kč / noc</span>.</li>
+        <li>· Úhrada za izbu je možná na recepcii pri check-ine (kartou i v hotovosti).</li>
+        <li>
+          · Predĺženie pobytu alebo akékoľvek iné požiadavky môžeš dohodnúť priamo s hotelom:
+          <span className="mt-1 block pl-3 text-base">
+            <a href={`tel:${CONFIG.hotel.phone.replace(/\s/g, "")}`} className="hover:text-[color:var(--bordo)]">{CONFIG.hotel.phone}</a>
+            {"   •   "}
+            <a href={`mailto:${CONFIG.hotel.email}`} className="hover:text-[color:var(--bordo)]">{CONFIG.hotel.email}</a>
+          </span>
+        </li>
+        <li>
+          · S hotelom komunikuj pod heslom <strong>„Svadba Schultz“</strong> a menom hlavnej osoby, na koho je izba nahlásená.
+        </li>
+      </ul>
+    </div>
+  );
+
   return (
-    <Section id="ubytovanie" chapter="Chapter 04" title="Ubytovanie: spoločný save point">
+    <Section id="ubytovanie" level="Level 04" title="Ubytovanie: spoločný save point">
       <p className="max-w-3xl text-[color:var(--paper)]/85 leading-relaxed mb-6">
         Pre hostí máme predbežne dohodnuté ubytovanie v Hoteli Continental na noc
-        <strong> zo soboty 10.10.2026 na nedeľu 11.10.2026</strong>. Nižšie si naklikaj izby,
-        priraď k nim hostí a v prípade potreby detské postieľky, prístelky alebo psíka.
+        <strong> zo soboty 10.10.2026 na nedeľu 11.10.2026</strong>. Poprosíme ťa o potvrdenie
+        rezervácie pre vás — alternatívne si môžeš nájsť ubytovanie po vlastnej osi.
       </p>
 
       {sent ? (
-        <div className="paper-card p-6 text-center">
-          <p className="font-hand text-2xl text-[color:var(--bordo)]">Ďakujeme, ozveme sa s potvrdením ✨</p>
+        <div className="paper-card p-8 text-center">
+          <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[color:var(--turquoise)] text-[color:var(--bordo-deep)]">
+            <Check className="h-8 w-8" strokeWidth={3} />
+          </div>
+          <p className="mt-4 font-hand text-2xl text-[color:var(--bordo)]">Ďakujeme, ozveme sa s potvrdením ✨</p>
+          <button
+            type="button"
+            onClick={editUbytovanie}
+            className="mt-5 font-hand text-base text-[color:var(--ink)]/60 hover:text-[color:var(--bordo)]"
+          >
+            Zmeniť odpoveď
+          </button>
         </div>
       ) : guests.length === 0 ? (
         <div className="paper-card p-6 text-center">
@@ -998,7 +2030,7 @@ function UbytovanieSection() {
                 </div>
 
                 <div>
-                  <label className="font-marker text-xs uppercase text-[color:var(--bordo)]">Typ izby</label>
+                  <label className="form-label text-sm">Typ izby</label>
                   <div className="mt-2 grid gap-2 sm:grid-cols-3">
                     {CONFIG.rooms.map((rt) => (
                       <label
@@ -1015,29 +2047,50 @@ function UbytovanieSection() {
                           onChange={() => updateRoom(r.id, { typeKey: rt.key })}
                           className="sr-only"
                         />
-                        <div className="font-hand text-base text-[color:var(--ink)]">{rt.label}</div>
-                        <div className="font-marker text-xs text-[color:var(--bordo)]">{rt.price.toLocaleString("sk-SK")} Kč / noc</div>
+                        <div className="font-hand text-sm leading-tight text-[color:var(--ink)]">
+                          <span className="whitespace-nowrap">
+                            {rt.label}
+                            {"sublabel" in rt && rt.sublabel ? (
+                              <span className="text-[0.85rem] font-normal text-[color:var(--ink)]/50"> ({rt.sublabel})</span>
+                            ) : null}
+                          </span>
+                        </div>
+                        <div className="price-muted mt-0.5">{rt.price.toLocaleString("sk-SK")} Kč / noc</div>
                       </label>
                     ))}
                   </div>
                 </div>
 
                 <div className="mt-4">
-                  <label className="font-marker text-xs uppercase text-[color:var(--bordo)]">Na koho je izba</label>
+                  <label className="form-label text-sm">Na koho je izba</label>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {guests.map((g) => {
-                      const on = r.guestIds.includes(g.id);
+                      const isMain = r.mainGuestId === g.id;
+                      const isAdditional = r.additionalGuestIds.includes(g.id);
+                      const guestRoomId = findGuestRoomId(rooms, g.id);
+                      const inOtherRoom = guestRoomId !== null && guestRoomId !== r.id;
                       return (
                         <button
-                          type="button" key={g.id}
-                          onClick={() => toggleGuest(r.id, g.id)}
-                          className={`rounded-full border-2 px-3 py-1.5 font-hand text-sm transition ${
-                            on
-                              ? "border-[color:var(--turquoise)] bg-[color:var(--turquoise)]/25 text-[color:var(--bordo-deep)]"
-                              : "border-dashed border-[color:var(--ink)]/30 text-[color:var(--ink)] hover:border-[color:var(--bordo)]"
+                          key={g.id}
+                          type="button"
+                          disabled={inOtherRoom}
+                          onClick={() => onGuestChipClick(r.id, g.id)}
+                          title={
+                            inOtherRoom
+                              ? "Už priradená do inej izby"
+                              : "Klik: pridať / prepnúť hlavnú · dvojklik: odstrániť"
+                          }
+                          className={`rounded-full border-2 px-3 py-1.5 font-hand text-sm transition select-none ${
+                            inOtherRoom
+                              ? "cursor-not-allowed border-dashed border-[color:var(--ink)]/15 text-[color:var(--ink)]/35 opacity-50"
+                              : isMain
+                                ? "border-[color:var(--turquoise)] bg-[color:var(--turquoise)]/25 text-[color:var(--bordo-deep)]"
+                                : isAdditional
+                                  ? "border-[color:var(--turquoise)] bg-transparent text-[color:var(--ink)]"
+                                  : "border-dashed border-[color:var(--ink)]/30 text-[color:var(--ink)] hover:border-[color:var(--bordo)]"
                           }`}
                         >
-                          {on && <Check className="mr-1 inline h-3 w-3" />}
+                          {isMain && <Check className="mr-1 inline h-3 w-3" />}
                           {g.name}
                         </button>
                       );
@@ -1047,32 +2100,39 @@ function UbytovanieSection() {
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
                   <div>
-                    <label className="font-marker text-xs uppercase text-[color:var(--bordo)]">Detské postieľky (do 3 r.)</label>
+                    <label className="form-label text-sm block">
+                      Detská postieľka
+                      <span className="price-muted ml-4 font-body font-normal normal-case">zdarma  (do 3r.)</span>
+                    </label>
                     <input
                       type="number" min={0} value={r.cots}
                       onChange={(e) => updateRoom(r.id, { cots: Math.max(0, Number(e.target.value)) })}
                       className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)]"
                     />
-                    <p className="mt-1 text-xs text-[color:var(--ink)]/60">Zdarma</p>
                   </div>
                   <div>
-                    <label className="font-marker text-xs uppercase text-[color:var(--bordo)]">Prístelky</label>
+                    <label className="form-label text-sm block">
+                      Prístelka
+                      <span className="price-muted ml-4 font-body font-normal normal-case">{CONFIG.extras.extraBed} Kč / ks</span>
+                    </label>
                     <input
                       type="number" min={0} value={r.extraBeds}
                       onChange={(e) => updateRoom(r.id, { extraBeds: Math.max(0, Number(e.target.value)) })}
                       className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)]"
                     />
-                    <p className="mt-1 text-xs text-[color:var(--ink)]/60">{CONFIG.extras.extraBed} Kč / ks</p>
                   </div>
                   <div>
-                    <label className="font-marker text-xs uppercase text-[color:var(--bordo)]">Pes na izbe</label>
+                    <label className="form-label text-sm block">
+                      Havo na izbe
+                      <span className="price-muted ml-4 font-body font-normal normal-case">{CONFIG.extras.pet} Kč / noc</span>
+                    </label>
                     <label className="mt-1 flex cursor-pointer items-center gap-3 rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)]">
                       <input
                         type="checkbox" checked={r.pet}
                         onChange={(e) => updateRoom(r.id, { pet: e.target.checked })}
                         className="h-4 w-4 accent-[color:var(--bordo)]"
                       />
-                      <span className="font-hand text-base">Áno ({CONFIG.extras.pet} Kč)</span>
+                      <span className="font-hand text-base">Áno</span>
                     </label>
                   </div>
                 </div>
@@ -1101,60 +2161,114 @@ function UbytovanieSection() {
             </div>
           )}
 
-          <button className="inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]">
+          <div>
+            <label className="form-label text-sm">Poznámky</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              placeholder="Máš na srdci niečo, čo sa nedalo vyklikať? Už o vás hotel vie?"
+              className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)] placeholder:text-[color:var(--ink)]/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
+            />
+          </div>
+
+          {dobryVediet}
+
+          <button type="submit" className="inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]">
             <Send className="h-4 w-4" /> Odoslať záujem
           </button>
         </form>
       )}
-
-      <div className="paper-card mt-6 p-5">
-        <p className="font-marker text-xs uppercase text-[color:var(--bordo)]">Dobré vedieť</p>
-        <ul className="mt-2 space-y-1.5 font-hand text-lg text-[color:var(--ink)]">
-          <li>· Raňajky sú v cene izby.</li>
-          <li>· Parkovanie v hoteli je za príplatok <strong>{CONFIG.extras.parking} Kč / noc</strong>.</li>
-          <li>
-            · Ak plánuješ prísť skôr alebo zostať dlhšie, kontaktuj prosím hotel priamo.
-            Odporúčame <strong>predĺžiť pobyt až po svadbe</strong> – pred termínom je Brno vybookované kvôli technickému veľtrhu.
-          </li>
-        </ul>
-      </div>
     </Section>
   );
 }
 
 // ============ DRESSCODE ============
+const DRESSCODE_PALETTE = [
+  { color: "#3a1418", cells: [[0, 0], [0, 1], [1, 0], [1, 1]] }, // O
+  { color: "#8b1e1e", cells: [[0, 1], [0, 2], [1, 0], [1, 1]] }, // S
+  { color: "#c8942c", cells: [[0, 0], [1, 0], [2, 0], [0, 1]] }, // J
+  { color: "#f5c542", cells: [[0, 1], [1, 0], [1, 1], [1, 2]] }, // T
+  { color: "#4bb3a7", cells: [[0, 0], [1, 0], [2, 0], [3, 0]] }, // I
+  { color: "#c78bbf", cells: [[0, 0], [1, 0], [2, 0], [2, 1]] }, // L
+] as const;
+
+type TetrominoCell = readonly [number, number];
+
+function TetrominoSwatch({ color, cells }: { color: string; cells: readonly TetrominoCell[] }) {
+  const cols = cells.map(([, c]) => c);
+  const rows = cells.map(([r]) => r);
+  const minC = Math.min(...cols);
+  const maxC = Math.max(...cols);
+  const minR = Math.min(...rows);
+  const maxR = Math.max(...rows);
+  const gridCols = maxC - minC + 1;
+  const gridRows = maxR - minR + 1;
+
+  return (
+    <div
+      className="dresscode-tetromino-grid"
+      style={{
+        gridTemplateColumns: `repeat(${gridCols}, var(--dresscode-cell))`,
+        gridTemplateRows: `repeat(${gridRows}, var(--dresscode-cell))`,
+      }}
+      aria-hidden
+    >
+      {cells.map(([r, c], i) => (
+        <div
+          key={i}
+          className="dresscode-tetromino-cell"
+          style={{
+            gridColumn: c - minC + 1,
+            gridRow: r - minR + 1,
+            background: color,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function DresscodeSection() {
   return (
-    <Section id="dresscode" chapter="Chapter 06" title="Dresscode: elegantne, ale neberte sa príliš vážne">
+    <Section id="dresscode" level="Level 06" title="Dresscode: elegantne, ale hravo">
       <p className="max-w-3xl text-[color:var(--paper)]/85 leading-relaxed mb-8">
         Budeme radi, keď prídete slávnostne, pohodlne a tak, aby ste sa cítili dobre.
         Farby a štýl nech pokojne ladia s jesennou, bordovo-zlatou, hravou náladou.
       </p>
-      <div className="mb-6 flex flex-wrap gap-3">
-        {["#3a1418", "#8b1e1e", "#c8942c", "#f5c542", "#4bb3a7", "#c78bbf"].map((c) => (
-          <div key={c} className="paper-card p-2 -rotate-2 even:rotate-2">
-            <div className="h-12 w-12 rounded" style={{ background: c }} />
-            <p className="mt-1 text-center font-hand text-xs text-[color:var(--ink)]">{c}</p>
+      <div className="mb-6 grid w-full max-w-2xl grid-cols-6 gap-2 sm:gap-2.5">
+        {DRESSCODE_PALETTE.map((piece, i) => (
+          <div
+            key={piece.color}
+            className={`dresscode-palette-card paper-card grid place-items-center ${i % 2 ? "rotate-2" : "-rotate-2"}`}
+          >
+            <TetrominoSwatch color={piece.color} cells={piece.cells} />
           </div>
         ))}
       </div>
       <div className="grid gap-6 md:grid-cols-2">
         <div className="paper-card p-6">
-          <h3 className="font-marker text-xl text-[color:var(--turquoise)] mb-3">✅ Do&apos;s</h3>
+          <h3 className="mb-3 flex items-center gap-2 font-pixel text-sm uppercase text-[color:var(--turquoise)] md:text-base">
+            <CircleCheck className="h-6 w-6 shrink-0 stroke-[2.25] md:h-7 md:w-7" aria-hidden />
+            Do&apos;s
+          </h3>
           <ul className="space-y-2 font-hand text-lg text-[color:var(--ink)]">
             <li>· Slávnostné oblečenie</li>
             <li>· Pohodlné topánky na tanec</li>
-            <li>· Jesenné / bordové / zlaté / tmavé tóny vítané</li>
+            <li>· Jednofarebné jesenné / hravé tóny vítané</li>
             <li>· Osobitosť povolená</li>
           </ul>
         </div>
         <div className="paper-card p-6">
-          <h3 className="font-marker text-xl text-[color:var(--destructive)] mb-3">🚫 Don&apos;ts</h3>
+          <h3 className="mb-3 flex items-center gap-2 font-pixel text-sm uppercase text-[color:var(--destructive)] md:text-base">
+            <Ban className="h-5 w-5 shrink-0 md:h-6 md:w-6" aria-hidden />
+            Don&apos;ts
+          </h3>
           <ul className="space-y-2 font-hand text-lg text-[color:var(--ink)]">
             <li>· Biele šaty (ak nie si nevesta)</li>
             <li>· Tepláky</li>
             <li>· Outfit, v ktorom nevydržíš tancovať</li>
-            <li>· Cosplay draka len po schválení nevestou</li>
+            <li>· Cosplay draka len po schválení novomanželmi</li>
           </ul>
         </div>
       </div>
@@ -1165,7 +2279,7 @@ function DresscodeSection() {
 // ============ DARY ============
 function DarySection() {
   return (
-    <Section id="dary" chapter="Chapter 07" title="Loot & kytice">
+    <Section id="dary" level="Level 07" title="Kvety & loot">
       <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
         <div className="paper-card p-6 md:p-8">
           <p className="font-hand text-2xl text-[color:var(--bordo)] mb-4">
@@ -1176,10 +2290,9 @@ function DarySection() {
             finančný príspevok na spoločný štart do manželstva.
           </p>
           <div className="mt-6 rounded-lg border-2 border-dashed border-[color:var(--blush)] p-4">
-            <p className="font-marker text-sm uppercase text-[color:var(--bordo)]">💐 Kvety</p>
+            <p className="font-marker text-sm uppercase text-[color:var(--bordo)]">💐 Kytice</p>
             <p className="mt-1 font-hand text-lg text-[color:var(--ink)]">
-              Aby kvety neskončili smutne v kúte, budeme radi, ak to obmedzíme
-              maximálne na jeden kvietok na osobu.
+              Aby kytice neskončili smutne v kúte, budeme radi, ak ušetríte svoje peňaženky a priestory našej garzónky a dohodneme sa maximálne na jednom kvietku na osobu.
             </p>
           </div>
         </div>
@@ -1189,9 +2302,9 @@ function DarySection() {
             Pre tých, ktorí majú radšej rýchly checkout než obálkový inventory.
           </p>
           <div className="mt-3 grid place-items-center">
-            <img src={CONFIG.qrPayment} alt="QR kód pre platbu" className="h-40 w-40 rounded-md" />
+            <img src={CONFIG.qrPayment} alt="QR kód pre platbu" className="h-60 w-60 rounded-md" />
           </div>
-          <p className="mt-2 text-center text-xs text-[color:var(--ink)]/60">QR placeholder</p>
+          {/* <p className="mt-2 text-center text-xs text-[color:var(--ink)]/60">QR placeholder</p> */}
         </div>
       </div>
     </Section>
@@ -1201,7 +2314,7 @@ function DarySection() {
 // ============ DEŇ ============
 function DenSection() {
   return (
-    <Section id="den" chapter="Chapter 08" title="Uži si náš deň">
+    <Section id="den" level="Level 08" title="Uži si náš deň">
       <div className="paper-card p-6 md:p-10 relative overflow-hidden">
         <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-[color:var(--turquoise)]/30 blur-2xl" />
         <div className="absolute -left-8 -bottom-8 h-40 w-40 rounded-full bg-[color:var(--blush)]/30 blur-2xl" />
@@ -1226,7 +2339,7 @@ function DenSection() {
 // ============ FOTKY ============
 function FotkySection() {
   return (
-    <Section id="fotky" chapter="Chapter 09" title="Zdieľaj s nami svoje zábery">
+    <Section id="fotky" level="Level 10" title="Zdieľaj s nami svoje zábery">
       <div className="grid gap-6 md:grid-cols-2">
         <div className="paper-card p-6">
           <p className="font-hand text-2xl text-[color:var(--bordo)]">
@@ -1255,17 +2368,64 @@ function FotkySection() {
   );
 }
 
+// ============ BRNO ============
+const BRNO_TIPS = [
+  { title: "Špilberk & panorama", desc: "Hrad s výhľadom na mesto — ideálny side quest na nedeľné popoludnie." },
+  { title: "Katedrála sv. Petra a Pavla", desc: "Ikona Brna na Petrove. Krátka prechádzka z centra." },
+  { title: "Villa Tugendhat", desc: "UNESCO moderna. Odporúčame rezerváciu vopred, ak máš čas navyše." },
+  { title: "Kafé & pivné labyrinty", desc: "Brno má skvelé kaviarne aj pivárne — ideálne na pomalé doobedie po svadbe." },
+  { title: "Zelný trh & okolie", desc: "Historické jadro, socha krokodíla a desiatky zákutí na fotky." },
+  { title: "Technické múzeum", desc: "Ak máš rad/a históriu a techniku — silný tip na predĺžený pobyt." },
+];
+
+function BrnoSection() {
+  return (
+    <Section id="brno" level="Level 09" title="Brno: tipy na predĺženú návštevu">
+      <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-2xl">
+        Ak plánuješ zostať v Brne dlhšie, mesto má čo ponúknuť. Tu je pár tipov — doplníme ich ešte o naše obľúbené miesta.
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {BRNO_TIPS.map((tip, i) => (
+          <div key={tip.title} className="paper-card p-5" style={{ transform: `rotate(${(i % 2 === 0 ? -1 : 1) * 0.5}deg)` }}>
+            <h3 className="font-display text-xl text-[color:var(--bordo)]">{tip.title}</h3>
+            <p className="mt-2 font-hand text-base leading-relaxed text-[color:var(--ink)]/80">{tip.desc}</p>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+
 // ============ FAQ ============
 const FAQ = [
-  { q: "Kedy máme prísť?", a: "Zraz je o 14:00 na Moravském náměstí. Obrad začína o 15:30 v Kostole sv. Jakuba — príďte s 15 min rezervou." },
+  { q: "Kedy máme prísť?", a: "Zraz je o 14:30 na recepcii hotela Continental. Obrad začína o 15:30 v Kostole sv. Jakuba — príďte s 15 min rezervou." },
+  { q: "Prečo rezervovať izbu v Hoteli Continental?", a: "Urobili sme prieskum pomeru cena–kvalita–vzdialenosť a Continental nám najviac sedí. Mimo tejto ponuky to neodporúčame — nechceme, aby ste skončili ďaleko alebo v horšom pomere ceny a komfortu." },
+  { q: "Môžem si nájsť ubytovanie inde?", a: "Áno, úplne v pohode. Ak nevyužiješ náš blok, daj nám len vedieť v RSVP alebo v poznámke, aby sme vedeli počítať s účasťou." },
+  { q: "Čo ak chcem predĺžiť pobyt?", a: "Odporúčame predĺžiť pobyt až po svadbe – pred termínom je Brno vybookované kvôli technickému veľtrhu. Predĺženie alebo iné požiadavky vybav priamo s hotelom. Pri komunikácii uveď heslo „Svadba Schultz“ a meno hlavnej osoby z rezervácie." },
+  { q: "Kde a kedy je zraz?", a: "Ak nie si ubytovaný/á v Continental, môžeš doraziť rovno na obrad o 15:30. Ak si v hoteli, zastav sa o 14:30 na recepcii — občerstvenie, zahriatie a zoznámenie sa s ostatnými." },
   { q: "Kde je obrad?", a: "Kostol sv. Jakuba v Brne. Odkaz na Google Maps nájdeš v sekcii Lokácie." },
   { q: "Kde zaparkovať?", a: "V Hoteli Continental je platené parkovanie (390 Kč / noc). V okolí Kumstu a kostola sú platené parkoviská." },
   { q: "Ako funguje ubytovanie?", a: "Máme predbežnú rezerváciu v Hoteli Continental na noc 10. – 11.10. Detaily a formulár nájdeš v sekcii Ubytovanie." },
-  { q: "Čo s deťmi?", a: "Deti sú vítané. V RSVP ich pridaj ako ďalších hostí a v sekcii Pokrm im zaklikni detskú porciu." },
+  { q: "Už som si telefonicky rezervoval/a izbu na heslo Schultz — čo ďalej?", a: "Určite aj tak vyplň formulár v sekcii Ubytovanie — do poznámky napíš, že si už rezervoval/a telefonicky. Daj si pozor, aby si ako hlavnú osobu uviedol/a toho istého, na koho je izba vedená u hotela (heslo „Svadba Schultz“), inak vzniknú duplicity. Bez vyplneného formulára nemáme prehľad a usudzujeme, že si hľadáš ubytovanie po vlastnej osi." },
+  { q: "Čo s deťmi?", a: "Deti sú vítané, ale necháme v réžii každého, aby sa rozhodol tak, aby si dokázal deň užiť. Ak je to možné, odporúčame vybaviť stráženie. V RSVP ich pridaj ako ďalších hostí a v sekcii Pokrm im zaklikni detskú porciu." },
   { q: "Čo s darom?", a: "Radi prijmeme finančný príspevok — obálka, QR platba alebo prevod. Detaily v sekcii Loot & kytice." },
   { q: "Aký je dresscode?", a: "Slávnostne a pohodlne. Jesenné, bordové, zlaté tóny vítané. Viac v sekcii Dresscode." },
   { q: "Kam nahrať fotky?", a: "Do našej spoločnej galérie cez tlačidlo alebo QR kód v sekcii Fotky." },
   { q: "Na koho sa obrátiť?", a: "Napíš alebo zavolaj Natálii alebo Otovi — kontakty sú v poslednej sekcii." },
+  { q: "Môžem prísť sám/sama?", a: "Samozrejme! Ak nemáš +1, príď sám/sama — na tanečnom parkete sa určite nájde parťák." },
+  { q: "Čo ak mám alergiu alebo intoleranciu?", a: "Napíš nám to do poznámky v sekcii Pokrm alebo Ubytovanie, alebo nám zavolaj. Kuchyňu vopred upozorníme." },
+  { q: "Je dresscode záväzný?", a: "Nie striktne — ide skôr o náladu. Dôležité je, aby si sa cítil/a dobre a vydržal/a tancovať do 02:00." },
+  { q: "Kedy končí oslava?", a: "Oficiálny program končí okolo 02:00 dozvukmi. Kumst nás nechá tancovať, kým nám to nohy dovolia." },
+  { q: "Ako sa dostaneme z hostiny späť do hotela?", a: "Pre triezvejších a energickejších je to do 10 minút pešia prechádzka. Inak odporúčame využiť Bolt, Wolt alebo Uber na rýchly prevoz." },
+  { q: "Môžem prísť neskôr / odísť skôr?", a: "Áno, rozumieme. Daj nám len vedieť v RSVP alebo v poznámke, aby sme vedeli počítať s miestami pri stole." },
+  { q: "Bude vegetariánska / bezlepková voľba?", a: "Áno — v sekcii Pokrm si vyber z troch jedál vrátane vegetariánskej možnosti. Špeciálne diéty nám napíš v poznámke." },
+  { q: "Mám kde zaparkovať auto?", a: "Jasné. V hoteli Continental je za príplatok k dispozícii parkovisko, v ulicia Brna je tiež možné cez víkend parkovať v modrej zóne bezplatne. Počas pobytu odporúčame sa po meste pohybovať peši alebo verejnou dopravou." },
+  { q: "Čo ak prší?", a: "Obrad je v kostole, hostina v Kumste — oboje pod strechou. Dáždnik v inventári nechaj pre istotu, ale quest pokračuje za každého počasia." },
+  { q: "Môžem prísť s psíkom?", a: "Do kostola a na hostinu ho prosím neber. V krajnom prípade — ak nie je možné vybaviť stráženie — môže byť za príplatok v hoteli (500 Kč / noc), prípadne vo vedľajšej miestnosti v budove hostiny. Viac v sekcii Ubytovanie." },
+  { q: "Ako funguje QR platba na dar?", a: "V sekcii Loot & kytice nájdeš QR kód. Je to úplne voliteľné — obálka pri stole funguje tiež." },
+  { q: "Môžem doniesť kyticu?", a: "Budeme radi, ak uštríte vaše peňaženky i naše priestory a dohodneme sa maximálne na jednom kvietku na osobu. Dostatočnou ozdobou a darom bude i len vaša prítomnosť vyzbrojená dobrou náladou a úprimným úsmevom." },
+  { q: "Bude preklad / slovenčina v kostole?", a: "Obrad bude v češtine, ale program a pokyny máme v slovenčine. Ak niečo nepochopíš, kľakni na NPC poradcu alebo nás zavolaj." },
+  { q: "Kde sa môžem prezliecť pred oslavou?", a: "Check-in v hoteli je od 13:00 — izbu dostaneš včas, aby si sa stihol/a pripraviť pred zrazom o 14:30." },
 ];
 
 function FaqSection() {
@@ -1281,16 +2441,16 @@ function FaqSection() {
   }
 
   return (
-    <Section id="faq" chapter="Chapter 10" title="Svadobný NPC poradca">
+    <Section id="faq" level="Level 11" title="Svadobný NPC poradca">
       <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
-        <div className="paper-card p-4">
+        <div className="paper-card flex flex-col p-4">
           <p className="mb-3 font-marker text-sm uppercase text-[color:var(--bordo)]">Vyber otázku</p>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex max-h-[420px] flex-col gap-1.5 overflow-y-auto pr-1">
             {FAQ.map((f) => (
               <button
                 key={f.q}
                 onClick={() => ask(f)}
-                className="rounded-md border border-dashed border-[color:var(--ink)]/30 bg-white/40 px-3 py-2 text-left font-hand text-lg text-[color:var(--ink)] hover:bg-[color:var(--gold)]/20 transition"
+                className="shrink-0 rounded-md border border-dashed border-[color:var(--ink)]/30 bg-white/40 px-3 py-2 text-left font-hand text-lg text-[color:var(--ink)] hover:bg-[color:var(--gold)]/20 transition"
               >
                 <HelpCircle className="mr-2 inline h-4 w-4 text-[color:var(--bordo)]" />
                 {f.q}
@@ -1325,7 +2485,7 @@ function FaqSection() {
             ))}
           </div>
           <p className="mt-2 text-center text-xs text-[color:var(--ink)]/50">
-            Statický režim · pripravené na dopojenie AI cez API
+            Statický NPC poradca · {FAQ.length} otázok
           </p>
         </div>
       </div>
@@ -1336,7 +2496,19 @@ function FaqSection() {
 // ============ KONTAKT ============
 function KontaktSection() {
   return (
-    <Section id="kontakt" chapter="Chapter 11" title="Kontakt">
+    <section
+      id="kontakt"
+      className="flex min-h-[calc(100dvh-4.25rem)] flex-col py-16 lg:min-h-[calc(100dvh-1rem)] lg:py-24"
+    >
+      <div className="mb-8 flex items-end gap-4">
+        <span className="font-marker text-sm uppercase tracking-widest text-[color:var(--turquoise)]">
+          Level 12
+        </span>
+        <div className="h-px flex-1 border-t-2 border-dashed border-[color:var(--gold)]/40" />
+      </div>
+      <h2 className="font-display text-4xl md:text-5xl lg:text-6xl text-[color:var(--paper)] mb-8">
+        Kontakt
+      </h2>
       <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-2xl">
         Ak si sa stratil/a v queste, ozvi sa nám. Alebo niekomu z party, kto vyzerá, že vie, čo robí.
       </p>
@@ -1363,20 +2535,15 @@ function KontaktSection() {
           </div>
         ))}
       </div>
-    </Section>
-  );
-}
-
-// ============ FOOTER ============
-function Footer() {
-  return (
-    <footer className="mt-16 border-t-2 border-dashed border-[color:var(--gold)]/30 pt-8 pb-16 text-center">
-      <p className="font-marker text-lg text-[color:var(--gold)]">
-        Natália &amp; Oto · 10.10.2026 · Brno
-      </p>
-      <p className="mt-2 font-hand text-lg text-[color:var(--paper)]/60">
-        End of quest log · vidíme sa čoskoro ❤️
-      </p>
-    </footer>
+      <div className="flex-1 min-h-[4rem]" />
+      <footer className="mt-auto border-t-2 border-dashed border-[color:var(--gold)]/30 pt-8 pb-6 text-center">
+        <p className="font-marker text-lg text-[color:var(--gold)]">
+          Natália &amp; Oto · 10.10.2026 · Brno
+        </p>
+        <p className="mt-2 font-hand text-lg text-[color:var(--paper)]/60">
+          Quest log done · Tešíme sa na Vás !!   
+        </p>
+      </footer>
+    </section>
   );
 }
