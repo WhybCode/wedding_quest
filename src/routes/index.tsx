@@ -15,6 +15,16 @@ import {
 
 export const Route = createFileRoute("/")({ component: WeddingSite });
 
+const FORMSPREE_DEFAULT = "https://formspree.io/f/mzdnpyza";
+
+/** Vite env na CI môže byť prázdny reťazec (nastavený secret bez hodnoty) — ?? by nepoužilo fallback. */
+function viteEnv(name: string, fallback = "") {
+  const value = import.meta.env[name as keyof ImportMetaEnv];
+  if (typeof value !== "string") return fallback;
+  const trimmed = value.trim();
+  return trimmed || fallback;
+}
+
 // ============ CONFIG (easy to edit) ============
 const CONFIG = {
   brideName: "Natália",
@@ -22,12 +32,12 @@ const CONFIG = {
   dateISO: "2026-10-10T14:00:00+02:00",
   dateHuman: "10.10.2026",
   city: "Brno, Česká republika",
-  /** Formspree — https://formspree.io/f/mzdnpyza (prepíše VITE_FORMSPREE_ENDPOINT v .env) */
-  formEndpoint: import.meta.env.VITE_FORMSPREE_ENDPOINT ?? "https://formspree.io/f/mzdnpyza",
+  /** Formspree — https://formspree.io/f/mzdnpyza */
+  formEndpoint: viteEnv("VITE_FORMSPREE_ENDPOINT", FORMSPREE_DEFAULT),
   formEndpoints: {
-    rsvp: import.meta.env.VITE_FORMSPREE_RSVP ?? "",
-    pokrm: import.meta.env.VITE_FORMSPREE_POKRM ?? "",
-    ubytovanie: import.meta.env.VITE_FORMSPREE_UBYTOVANIE ?? "",
+    rsvp: viteEnv("VITE_FORMSPREE_RSVP"),
+    pokrm: viteEnv("VITE_FORMSPREE_POKRM"),
+    ubytovanie: viteEnv("VITE_FORMSPREE_UBYTOVANIE"),
   },
   contacts: {
     natalia: { phone: "+421 950 323 833", email: "nataalia.schultz@gmail.com" },
@@ -360,6 +370,13 @@ function resolveSnapTarget(direction: 1 | -1): HTMLElement | null {
   return progress > SNAP_UP_STAY_RATIO ? current.el : prev.el;
 }
 
+function isTypingTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  return target.isContentEditable;
+}
+
 function inferSnapDirection(userIntentDelta: number): 1 | -1 {
   if (userIntentDelta > 8) return 1;
   if (userIntentDelta < -8) return -1;
@@ -400,6 +417,7 @@ function WeddingSite() {
   const scrollLockRef = useRef(false);
   const lastSnapAtRef = useRef(0);
   const pendingChecklistRef = useRef<string | null>(null);
+  const keyboardNavIndexRef = useRef<number | null>(null);
 
   // Load persisted checks
   useEffect(() => {
@@ -539,6 +557,7 @@ function WeddingSite() {
     };
 
     const onWheel = (e: WheelEvent) => {
+      keyboardNavIndexRef.current = null;
       if (scrollLockRef.current || activeSnapFrame) interruptSnap();
       if (Math.abs(e.deltaY) >= 2) {
         userIntentDelta += e.deltaY;
@@ -547,16 +566,66 @@ function WeddingSite() {
       }
     };
 
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      if (isTypingTarget(e.target)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      e.preventDefault();
+
+      const sections = getSectionAnchors();
+      if (!sections.length) return;
+
+      const direction: 1 | -1 = e.key === "ArrowDown" ? 1 : -1;
+
+      let currentIdx = keyboardNavIndexRef.current;
+      if (currentIdx === null) {
+        const activeId = getActiveChecklistId();
+        const sectionId = checklistToSection(activeId);
+        currentIdx = sections.findIndex((s) => s.el.id === sectionId);
+        if (currentIdx < 0) currentIdx = getSectionIndex(window.scrollY, sections);
+      }
+
+      const nextIdx = direction > 0
+        ? Math.min(currentIdx + 1, sections.length - 1)
+        : Math.max(currentIdx - 1, 0);
+
+      if (nextIdx === currentIdx) return;
+
+      keyboardNavIndexRef.current = nextIdx;
+      const target = sections[nextIdx].el;
+      const checklistId = sectionToChecklist(target.id);
+
+      pendingChecklistRef.current = checklistId;
+      setActive(checklistId);
+
+      cancelActiveSnap();
+      scrollLockRef.current = true;
+      alignSectionToTop(target, reducedMotion.matches, 0, () => {
+        scrollLockRef.current = false;
+        lastSnapAtRef.current = Date.now();
+        pendingChecklistRef.current = null;
+        setActive(checklistId);
+      });
+    };
+
+    const onTouchStart = () => {
+      keyboardNavIndexRef.current = null;
+      interruptSnap();
+    };
+
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("scrollend", snapAfterScrollEnd);
     window.addEventListener("wheel", onWheel, { passive: true });
-    window.addEventListener("touchstart", interruptSnap, { passive: true });
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
 
     return () => {
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("scrollend", snapAfterScrollEnd);
       window.removeEventListener("wheel", onWheel);
-      window.removeEventListener("touchstart", interruptSnap);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("touchstart", onTouchStart);
       cancelActiveSnap();
       clearTimeout(endTimer);
     };
@@ -564,6 +633,10 @@ function WeddingSite() {
 
   const scrollTo = (id: string) => {
     const sectionId = checklistToSection(id);
+    const sections = getSectionAnchors();
+    const navIdx = sections.findIndex((s) => s.el.id === sectionId);
+    if (navIdx >= 0) keyboardNavIndexRef.current = navIdx;
+
     pendingChecklistRef.current = id;
     setActive(id);
     scrollLockRef.current = true;
@@ -1239,8 +1312,8 @@ const PROGRAM = [
   { time: "13:00", title: "Check-in v hoteli", icon: "🛏️", place: "Hotel Continental", url: CONFIG.maps.hotel },
   { time: "14:30–15:00", title: "Zraz", icon: "🥂", place: "Recepcia hotela Continental", url: CONFIG.maps.hotel },
   { time: "15:30", title: "Obrad", icon: "💍", place: "Kostol sv. Jakuba", url: CONFIG.maps.kostol },
-  { time: "17:30", title: "Hostina", icon: "🍽️", place: "Kumst", url: CONFIG.maps.kumst },
-  { time: "18:30", title: "Prvý tanec", icon: "💃", place: null, url: null },
+  { time: "18:00", title: "Hostina", icon: "🍽️", place: "Kumst", url: CONFIG.maps.kumst },
+  { time: "19:30", title: "Prvý tanec", icon: "💃", place: null, url: null },
   { time: "22:00", title: "Raut", icon: "🌮", place: null, url: null },
   { time: "02:00", title: "Dozvuky", icon: "🪩", place: null, url: null },
 ];
