@@ -54,7 +54,7 @@ const CONFIG = {
     {
       id: "hotel",
       name: "Hotel Continental",
-      desc: "Ubytovanie & check-in. Naša štartovacia zóna.",
+      desc: "Ubytovanie & check-in + zraz. Vaša štartovná lokácia.",
       addr: "Kounicova 680/6, 602 00 Brno",
       image: "photos/lokacia_1.jpg",
       lat: 49.2005075,
@@ -64,7 +64,7 @@ const CONFIG = {
     {
       id: "kostol",
       name: "Kostol sv. Jakuba",
-      desc: "Obrad. Prosíme, príďte s 15 min rezervou.",
+      desc: "Obrad. Prosíme, príďte aspoň s 15 min rezervou.",
       addr: "Jakubské náměstí, 602 00 Brno",
       image: "photos/lokacia_2.jpg",
       lat: 49.1966056,
@@ -158,7 +158,7 @@ const SECTIONS = [
   { id: "rsvp", label: "Potvrď účasť", icon: Check },
   { id: "ubytovanie", label: "Rezervuj si izbu", icon: Sparkles },
   { id: "pokrm", label: "Vyber si pokrm", icon: Utensils },
-  { id: "dresscode", label: "Nachystaj si dresscode", icon: Shirt },
+  { id: "dresscode", label: "Nachystaj si odev", icon: Shirt },
   { id: "dary", label: "Priprav dar", icon: Gift },
   { id: "den", label: "Uži si náš deň", icon: Music },
   { id: "brno", label: "Objav Brno", icon: MapPin },
@@ -167,86 +167,13 @@ const SECTIONS = [
 ];
 const CHECK_KEY = "no-wedding-checked-v1";
 
-const SNAP_SECTION_IDS = [
+const SECTION_IDS = [
   "hero", "program", "lokacie", "rsvp", "ubytovanie", "pokrm",
   "dresscode", "dary", "den", "brno", "fotky", "faq", "kontakt",
 ] as const;
 
-/** Pri scroll dole: 30 % aktuálna / 70 % nasledujúca. Pri scroll hore: 70 % predchádzajúca / 30 % aktuálna. */
-const SNAP_DOWN_STAY_RATIO = 0.3;
-const SNAP_UP_STAY_RATIO = 0.7;
-const SNAP_MIN_MS = 1050;
-const SNAP_MAX_MS = 2100;
-const SNAP_MS_PER_PX = 5.2;
-
-function getSnapEdge() {
+function getScrollOffset() {
   return window.matchMedia("(min-width: 1024px)").matches ? 16 : 68;
-}
-
-type SectionAnchor = { el: HTMLElement; docTop: number };
-
-let activeSnapFrame = 0;
-let scrollVelocityPxMs = 0;
-
-function cancelActiveSnap() {
-  if (activeSnapFrame) cancelAnimationFrame(activeSnapFrame);
-  activeSnapFrame = 0;
-}
-
-function getSectionAnchors(): SectionAnchor[] {
-  const edge = getSnapEdge();
-  return SNAP_SECTION_IDS.flatMap((id) => {
-    const el = document.getElementById(id);
-    if (!el) return [];
-    return [{ el, docTop: el.getBoundingClientRect().top + window.scrollY - edge }];
-  });
-}
-
-function alignSectionToTop(
-  el: HTMLElement,
-  reducedMotion: boolean,
-  _velocityPxMs: number,
-  onDone?: () => void,
-) {
-  const targetTop = el.getBoundingClientRect().top + window.scrollY - getSnapEdge();
-  const start = window.scrollY;
-  const distance = targetTop - start;
-  if (Math.abs(distance) < 2) {
-    onDone?.();
-    return;
-  }
-
-  cancelActiveSnap();
-
-  if (reducedMotion) {
-    window.scrollTo(0, targetTop);
-    onDone?.();
-    return;
-  }
-
-  const duration = Math.min(
-    SNAP_MAX_MS,
-    Math.max(SNAP_MIN_MS, Math.abs(distance) * SNAP_MS_PER_PX),
-  );
-  const t0 = performance.now();
-  const easeOut = (t: number) => 1 - Math.pow(1 - t, 4);
-
-  const step = (now: number) => {
-    const p = Math.min(1, (now - t0) / duration);
-    window.scrollTo(0, start + distance * easeOut(p));
-    if (p < 1) {
-      activeSnapFrame = requestAnimationFrame(step);
-    } else {
-      activeSnapFrame = 0;
-      onDone?.();
-    }
-  };
-
-  activeSnapFrame = requestAnimationFrame(step);
-}
-
-function isAlignedToSection(el: HTMLElement, tolerance = 3) {
-  return Math.abs(el.getBoundingClientRect().top - getSnapEdge()) <= tolerance;
 }
 
 const CHECKLIST_IDS = new Set(SECTIONS.map((s) => s.id));
@@ -266,11 +193,11 @@ function checklistToSection(checklistId: string): string {
 }
 
 function getActiveChecklistId(): string {
-  const edge = getSnapEdge();
+  const edge = getScrollOffset();
   const marker = edge + 96;
 
-  for (let i = SNAP_SECTION_IDS.length - 1; i >= 0; i--) {
-    const id = SNAP_SECTION_IDS[i];
+  for (let i = SECTION_IDS.length - 1; i >= 0; i--) {
+    const id = SECTION_IDS[i];
     const el = document.getElementById(id);
     if (!el) continue;
     const rect = el.getBoundingClientRect();
@@ -281,122 +208,9 @@ function getActiveChecklistId(): string {
   return "hero";
 }
 
-function getSectionIndex(scrollY: number, sections: SectionAnchor[]) {
-  for (let i = 0; i < sections.length - 1; i++) {
-    if (scrollY < sections[i + 1].docTop) return i;
-  }
-  return sections.length - 1;
-}
-
-function getAlignedSection(sections: SectionAnchor[]): HTMLElement | null {
-  const edge = getSnapEdge();
-  for (const s of sections) {
-    if (Math.abs(s.el.getBoundingClientRect().top - edge) <= 4) return s.el;
-  }
-  return null;
-}
-
-function getMinSnapSpan() {
-  return Math.min(window.innerHeight * 0.42, 560);
-}
-
-/** Dlhé sekcie (ubytovanie, FAQ…) — voľný scroll uprostred, snap len na hornom/dolnom okraji */
-function getTallSectionScrollZone(): "middle" | "top" | "bottom" | null {
-  const sections = getSectionAnchors();
-  if (!sections.length) return null;
-
-  const idx = getSectionIndex(window.scrollY, sections);
-  const current = sections[idx];
-  if (!current) return null;
-
-  const el = current.el;
-  const viewH = window.innerHeight;
-  if (el.offsetHeight <= viewH * 0.92) return null;
-
-  const edge = getSnapEdge();
-  const rect = el.getBoundingClientRect();
-  const topAligned = rect.top >= edge - 8 && rect.top <= edge + 56;
-  const atBottom = rect.bottom <= viewH + 32;
-
-  if (topAligned) return "top";
-  if (atBottom) return "bottom";
-  return "middle";
-}
-
-/** Vždy vráti cieľovú sekciu — 30/70 podľa smeru, pri krátkych sekciách najbližší okraj */
-function resolveSnapTarget(direction: 1 | -1): HTMLElement | null {
-  const sections = getSectionAnchors();
-  if (!sections.length) return null;
-
-  const scrollY = window.scrollY;
-  const edge = getSnapEdge();
-  const idx = getSectionIndex(scrollY, sections);
-  const current = sections[idx];
-  const next = sections[idx + 1];
-  const prev = sections[idx - 1];
-  const minSpan = getMinSnapSpan();
-
-  if (direction > 0) {
-    if (!next) return current.el;
-    const rawSpan = Math.max(next.docTop - current.docTop, 1);
-    if (rawSpan < minSpan) {
-      const dCurrent = Math.abs(current.el.getBoundingClientRect().top - edge);
-      const dNext = Math.abs(next.el.getBoundingClientRect().top - edge);
-      return dNext < dCurrent ? next.el : current.el;
-    }
-    const progress = (scrollY - current.docTop) / rawSpan;
-    return progress < SNAP_DOWN_STAY_RATIO ? current.el : next.el;
-  }
-
-  if (next) {
-    const rawSpan = Math.max(next.docTop - current.docTop, 1);
-    if (rawSpan < minSpan) {
-      const dCurrent = Math.abs(current.el.getBoundingClientRect().top - edge);
-      const dNext = Math.abs(next.el.getBoundingClientRect().top - edge);
-      return dCurrent <= dNext ? current.el : next.el;
-    }
-    const progress = (scrollY - current.docTop) / rawSpan;
-    if (progress > SNAP_DOWN_STAY_RATIO) return current.el;
-  }
-
-  if (!prev) return current.el;
-  const rawSpan = Math.max(current.docTop - prev.docTop, 1);
-  if (rawSpan < minSpan) {
-    const dCurrent = Math.abs(current.el.getBoundingClientRect().top - edge);
-    const dPrev = Math.abs(prev.el.getBoundingClientRect().top - edge);
-    return dCurrent <= dPrev ? current.el : prev.el;
-  }
-  const progress = (scrollY - prev.docTop) / rawSpan;
-  return progress > SNAP_UP_STAY_RATIO ? current.el : prev.el;
-}
-
-function isTypingTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-  return target.isContentEditable;
-}
-
-function inferSnapDirection(userIntentDelta: number): 1 | -1 {
-  if (userIntentDelta > 8) return 1;
-  if (userIntentDelta < -8) return -1;
-
-  const sections = getSectionAnchors();
-  if (sections.length < 2) return 1;
-
-  const edge = getSnapEdge();
-  const idx = getSectionIndex(window.scrollY, sections);
-  const current = sections[idx];
-  const next = sections[idx + 1];
-  const prev = sections[idx - 1];
-
-  const dCurrent = Math.abs(current.el.getBoundingClientRect().top - edge);
-  const dNext = next ? Math.abs(next.el.getBoundingClientRect().top - edge) : Infinity;
-  const dPrev = prev ? Math.abs(prev.el.getBoundingClientRect().top - edge) : Infinity;
-
-  if (dNext < dCurrent - 2) return 1;
-  if (dPrev < dCurrent - 2) return -1;
-  return dNext <= dPrev ? 1 : -1;
+function scrollToSection(el: HTMLElement, behavior: ScrollBehavior = "smooth") {
+  const top = el.getBoundingClientRect().top + window.scrollY - getScrollOffset();
+  window.scrollTo({ top, behavior });
 }
 
 function markSectionChecked(id: string) {
@@ -414,10 +228,7 @@ function WeddingSite() {
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [active, setActive] = useState<string>("hero");
   const [mobileOpen, setMobileOpen] = useState(false);
-  const scrollLockRef = useRef(false);
-  const lastSnapAtRef = useRef(0);
-  const pendingChecklistRef = useRef<string | null>(null);
-  const keyboardNavIndexRef = useRef<number | null>(null);
+  const pendingScrollRef = useRef<string | null>(null);
 
   // Load persisted checks
   useEffect(() => {
@@ -441,220 +252,37 @@ function WeddingSite() {
   useEffect(() => {
     let activeTimer: ReturnType<typeof setTimeout>;
 
-    const applyActive = () => setActive(getActiveChecklistId());
-
-    const syncActive = (immediate = false) => {
-      if (pendingChecklistRef.current) {
-        setActive(pendingChecklistRef.current);
-        return;
-      }
-      if (scrollLockRef.current || activeSnapFrame) return;
-
+    const syncActive = () => {
+      if (pendingScrollRef.current) return;
       clearTimeout(activeTimer);
-      if (immediate) applyActive();
-      else activeTimer = setTimeout(applyActive, 120);
+      activeTimer = setTimeout(() => setActive(getActiveChecklistId()), 100);
     };
 
-    const onScroll = () => syncActive(false);
-    const onResize = () => syncActive(true);
+    const onResize = () => setActive(getActiveChecklistId());
 
-    syncActive(true);
-    window.addEventListener("scroll", onScroll, { passive: true });
+    setActive(getActiveChecklistId());
+    window.addEventListener("scroll", syncActive, { passive: true });
     window.addEventListener("resize", onResize);
     return () => {
-      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("scroll", syncActive);
       window.removeEventListener("resize", onResize);
       clearTimeout(activeTimer);
     };
   }, []);
 
-  // Po dokončení scrollu: 30/70 podľa smeru, bez preskakovania krátkych sekcií
-  useEffect(() => {
-    let endTimer: ReturnType<typeof setTimeout>;
-    let lastScrollY = window.scrollY;
-    let lastScrollTime = performance.now();
-    let userIntentDelta = 0;
-    const SNAP_COOLDOWN_MS = 320;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-
-    const snapAfterScrollEnd = () => {
-      if (scrollLockRef.current) return;
-      if (Date.now() - lastSnapAtRef.current < SNAP_COOLDOWN_MS) return;
-
-      const sections = getSectionAnchors();
-      if (getAlignedSection(sections)) {
-        userIntentDelta = 0;
-        return;
-      }
-
-      const tallZone = getTallSectionScrollZone();
-      if (tallZone === "middle") {
-        userIntentDelta = 0;
-        return;
-      }
-
-      const direction = inferSnapDirection(userIntentDelta);
-      let target: HTMLElement | null = null;
-
-      if (tallZone === "bottom" && direction > 0) {
-        const idx = getSectionIndex(window.scrollY, sections);
-        target = sections[idx + 1]?.el ?? sections[idx].el;
-      } else if (tallZone === "top" && direction < 0) {
-        const idx = getSectionIndex(window.scrollY, sections);
-        target = sections[idx - 1]?.el ?? sections[idx].el;
-      } else if (tallZone === "bottom" || tallZone === "top") {
-        userIntentDelta = 0;
-        return;
-      } else {
-        target = resolveSnapTarget(direction);
-      }
-
-      if (!target || isAlignedToSection(target)) {
-        userIntentDelta = 0;
-        return;
-      }
-
-      scrollLockRef.current = true;
-      userIntentDelta = 0;
-      alignSectionToTop(target, reducedMotion.matches, 0, () => {
-        scrollLockRef.current = false;
-        lastSnapAtRef.current = Date.now();
-        scrollVelocityPxMs = 0;
-        userIntentDelta = 0;
-        if (!pendingChecklistRef.current) {
-          setActive(getActiveChecklistId());
-        }
-      });
-    };
-
-    const scheduleSnap = () => {
-      if (scrollLockRef.current) return;
-      clearTimeout(endTimer);
-      endTimer = setTimeout(snapAfterScrollEnd, 180);
-    };
-
-    const onScroll = () => {
-      const now = performance.now();
-      const y = window.scrollY;
-      const dt = now - lastScrollTime;
-      const dy = y - lastScrollY;
-      if (dt > 0 && dt < 90) {
-        const instant = dy / dt;
-        scrollVelocityPxMs = scrollVelocityPxMs * 0.58 + instant * 0.42;
-      }
-      if (!scrollLockRef.current && !activeSnapFrame && Math.abs(dy) > 0.5) {
-        userIntentDelta += dy;
-      }
-      lastScrollY = y;
-      lastScrollTime = now;
-      scheduleSnap();
-    };
-
-    const interruptSnap = () => {
-      if (!scrollLockRef.current && !activeSnapFrame) return;
-      cancelActiveSnap();
-      scrollLockRef.current = false;
-    };
-
-    const onWheel = (e: WheelEvent) => {
-      keyboardNavIndexRef.current = null;
-      if (scrollLockRef.current || activeSnapFrame) interruptSnap();
-      if (Math.abs(e.deltaY) >= 2) {
-        userIntentDelta += e.deltaY;
-        const wheelV = e.deltaY * 0.028;
-        scrollVelocityPxMs = scrollVelocityPxMs * 0.5 + wheelV * 0.5;
-      }
-    };
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-      if (isTypingTarget(e.target)) return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-
-      e.preventDefault();
-
-      const sections = getSectionAnchors();
-      if (!sections.length) return;
-
-      const direction: 1 | -1 = e.key === "ArrowDown" ? 1 : -1;
-
-      let currentIdx = keyboardNavIndexRef.current;
-      if (currentIdx === null) {
-        const activeId = getActiveChecklistId();
-        const sectionId = checklistToSection(activeId);
-        currentIdx = sections.findIndex((s) => s.el.id === sectionId);
-        if (currentIdx < 0) currentIdx = getSectionIndex(window.scrollY, sections);
-      }
-
-      const nextIdx = direction > 0
-        ? Math.min(currentIdx + 1, sections.length - 1)
-        : Math.max(currentIdx - 1, 0);
-
-      if (nextIdx === currentIdx) return;
-
-      keyboardNavIndexRef.current = nextIdx;
-      const target = sections[nextIdx].el;
-      const checklistId = sectionToChecklist(target.id);
-
-      pendingChecklistRef.current = checklistId;
-      setActive(checklistId);
-
-      cancelActiveSnap();
-      scrollLockRef.current = true;
-      alignSectionToTop(target, reducedMotion.matches, 0, () => {
-        scrollLockRef.current = false;
-        lastSnapAtRef.current = Date.now();
-        pendingChecklistRef.current = null;
-        setActive(checklistId);
-      });
-    };
-
-    const onTouchStart = () => {
-      keyboardNavIndexRef.current = null;
-      interruptSnap();
-    };
-
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("scrollend", snapAfterScrollEnd);
-    window.addEventListener("wheel", onWheel, { passive: true });
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("touchstart", onTouchStart, { passive: true });
-
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("scrollend", snapAfterScrollEnd);
-      window.removeEventListener("wheel", onWheel);
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("touchstart", onTouchStart);
-      cancelActiveSnap();
-      clearTimeout(endTimer);
-    };
-  }, []);
-
   const scrollTo = (id: string) => {
     const sectionId = checklistToSection(id);
-    const sections = getSectionAnchors();
-    const navIdx = sections.findIndex((s) => s.el.id === sectionId);
-    if (navIdx >= 0) keyboardNavIndexRef.current = navIdx;
-
-    pendingChecklistRef.current = id;
+    pendingScrollRef.current = id;
     setActive(id);
-    scrollLockRef.current = true;
-    cancelActiveSnap();
     const el = document.getElementById(sectionId);
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (el) {
-      alignSectionToTop(el, reducedMotion, 0, () => {
-        scrollLockRef.current = false;
-        lastSnapAtRef.current = Date.now();
-        pendingChecklistRef.current = null;
-        setActive(id);
-      });
-    } else {
-      scrollLockRef.current = false;
-      pendingChecklistRef.current = null;
-    }
+    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? "auto"
+      : "smooth";
+    if (el) scrollToSection(el, behavior);
     setMobileOpen(false);
+    window.setTimeout(() => {
+      pendingScrollRef.current = null;
+    }, 600);
   };
 
   const toggleCheck = (id: string) => {
@@ -1176,8 +804,8 @@ function HeroMobilePhoto() {
 
   return (
     <div className="hero-intro-photo -mt-2 mb-1 flex w-full justify-end pr-10 sm:pr-14 md:pr-20 lg:hidden">
-      <div className="edge-polaroid w-[2.9rem] max-w-[44vw] rotate-[5deg] pointer-events-none cursor-default p-0.5 pb-1 shadow-sm">
-        <div className="tape tape-center scale-[0.58]" />
+      <div className="edge-polaroid w-[2.45rem] max-w-[38vw] rotate-[5deg] pointer-events-none cursor-default p-0.5 pb-1 shadow-sm">
+        <div className="tape tape-center scale-[0.52]" />
         <img
           src={showPlaceholder ? polaroidPlaceholder(0) : photoSrc}
           alt="Natália a Oto"
@@ -1187,7 +815,7 @@ function HeroMobilePhoto() {
           onError={() => setImgFailed(true)}
         />
         <p
-          className={`edge-photo-caption !mt-0.5 !min-h-0 !px-0 !text-[0.54rem] !leading-tight font-hand ${edgePhotoCaptionIsPlaceholder(0) ? "edge-photo-caption--placeholder" : ""}`}
+          className={`edge-photo-caption !mt-0.5 !min-h-0 !px-0 !text-[0.5rem] !leading-tight font-hand ${edgePhotoCaptionIsPlaceholder(0) ? "edge-photo-caption--placeholder" : ""}`}
         >
           {edgePhotoCaption(0)}
         </p>
@@ -1203,7 +831,7 @@ function HeroSection() {
       <div className="grid gap-8 lg:grid-cols-[1.3fr_1fr] items-center">
         <div>
           <p className="font-hand text-2xl text-[color:var(--paper)] mb-2">
-            Zdá sa, že si bol/a pozvaný/á na svadbu.
+            Zdá sa, že ste boli pozvaní na svadbu.
           </p>
           <h1 className="font-pixel text-5xl md:text-6xl lg:text-7xl leading-[1.3] text-[color:var(--gold)]">
             <span>Natália</span>
@@ -1215,10 +843,10 @@ function HeroSection() {
           <HeroMobilePhoto />
           <div className="ticker-line my-6 max-w-xl" />
           <p className="max-w-xl text-lg text-[color:var(--paper)]/80 leading-relaxed">
-            Spúšťame náš najväčší co-op quest a veľmi chceme, aby si bol/a pri tom.
-            Ulož si dátum, prejdi checklist a daj nám vedieť, či sa vidíme na tanečnom parkete.
-            Poprosíme ťa aj o potvrdenie rezervácie ubytovania pre vás — alternatívne si môžeš
-            nájsť ubytovanie po vlastnej osi.
+            Spúšťame našu najväčšiu co-op výzvu a chceme, aby ste boli pri tom!
+            Ulož si náš dátum, odčiarkaj si Quest log a daj nám vedieť, či ťa zbadáme nielen spoza oltára, ale aj na tanečnom parkete.
+            Poprosíme ťa tiež o potvrdenie rezervácie nami objednaného ubytovania, ak si neplánuješ hľadať
+            po vlastnej osi alternatívu.
           </p>
 
           <div className="mt-8 flex flex-wrap gap-3">
@@ -1308,13 +936,13 @@ function MiniCalendar() {
 
 // ============ PROGRAM ============
 const PROGRAM = [
-  { time: "10:00–11:00", title: "Výjazd", icon: "🚗", place: null, url: null },
+  { time: "10:00–11:00", title: "Výjazd z domu", icon: "🚗", place: null, url: null },
   { time: "13:00", title: "Check-in v hoteli", icon: "🛏️", place: "Hotel Continental", url: CONFIG.maps.hotel },
   { time: "14:30–15:00", title: "Zraz", icon: "🥂", place: "Recepcia hotela Continental", url: CONFIG.maps.hotel },
   { time: "15:30", title: "Obrad", icon: "💍", place: "Kostol sv. Jakuba", url: CONFIG.maps.kostol },
   { time: "18:00", title: "Hostina", icon: "🍽️", place: "Kumst", url: CONFIG.maps.kumst },
   { time: "19:30", title: "Prvý tanec", icon: "💃", place: null, url: null },
-  { time: "22:00", title: "Raut", icon: "🌮", place: null, url: null },
+  { time: "22:00", title: "Nočný raut", icon: "🌮", place: null, url: null },
   { time: "02:00", title: "Dozvuky", icon: "🪩", place: null, url: null },
 ];
 
@@ -1383,7 +1011,7 @@ function ProgramTrail() {
               {p.icon}
             </span>
             <div className={`program-trail-label${isWide ? " program-trail-label--wide" : ""}`}>
-              <div className={`flex items-baseline gap-x-3 gap-y-1${isWide ? " flex-nowrap" : " flex-wrap"}`}>
+              <div className="program-trail-copy flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <span className="program-trail-time font-hand text-xl md:text-2xl">
                   {p.time}
                 </span>
@@ -1411,7 +1039,8 @@ function ProgramSection() {
   return (
     <Section id="program" level="Level 01" title="Program dňa">
       <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-2xl">
-        Level 10.10.2026 má viac checkpointov. Tu je mapa, aby si neskončil/a v side queste v zlom bare.
+        Misia "10.10.2026" má viacero checkpointov. 
+        Tu je ich zoznam a mapa, aby ste neskončili side questom v zlej pivnici či v akejsi skrytej úrovni.
       </p>
       <ProgramTrail />
     </Section>
@@ -1578,12 +1207,12 @@ function RsvpSection() {
 
   if (sent) {
     return (
-      <Section id="rsvp" level="Level 03" title="Potvrď účasť">
+      <Section id="rsvp" level="Level 03" title="No čo, dojdeš gádžo?">
         <div className="paper-card p-8 text-center">
           <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-[color:var(--turquoise)] text-[color:var(--bordo-deep)]">
             <Check className="h-10 w-10" strokeWidth={3} />
           </div>
-          <h3 className="mt-4 font-display text-3xl text-[color:var(--bordo)]">Quest completed</h3>
+          <h3 className="mt-4 font-display text-3xl text-[color:var(--bordo)]">Úloha splnená!</h3>
           <p className="mt-2 font-hand text-xl text-[color:var(--ink)]">
             Ďakujeme! Uložili sme si tvoju odpoveď. Uvidíme sa 10.10.2026.
           </p>
@@ -1600,7 +1229,7 @@ function RsvpSection() {
   }
 
   return (
-    <Section id="rsvp" level="Level 03" title="Potvrď účasť">
+    <Section id="rsvp" level="Level 03" title="No čo, dojdeš gádžo?">
       <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-2xl">
         Bez potvrdenia účasti sa quest log neuloží. Prosíme, daj nám vedieť čo najskôr.
       </p>
@@ -1738,7 +1367,7 @@ function PokrmSection() {
   }
 
   return (
-    <Section id="pokrm" level="Level 05" title="Vyber si svoj svadobný power-up">
+    <Section id="pokrm" level="Level 05" title="Výber svadobného power-upu">
       {guests.length === 0 ? (
         <div className="paper-card p-6 text-center">
           <p className="font-hand text-xl text-[color:var(--ink)]">
@@ -2039,7 +1668,7 @@ function UbytovanieSection() {
         <li>· Parkovanie v hoteli je za príplatok <span className="price-muted">{CONFIG.extras.parking} Kč / noc</span>.</li>
         <li>· Úhrada za izbu je možná na recepcii pri check-ine (kartou i v hotovosti).</li>
         <li>
-          · Predĺženie pobytu alebo akékoľvek iné požiadavky môžeš dohodnúť priamo s hotelom:
+          · Predĺženie pobytu alebo akékoľvek iné požiadavky si môžeš dohodnúť priamo s hotelom:
           <span className="mt-1 block pl-3 text-base">
             <a href={`tel:${CONFIG.hotel.phone.replace(/\s/g, "")}`} className="hover:text-[color:var(--bordo)]">{CONFIG.hotel.phone}</a>
             {"   •   "}
@@ -2047,18 +1676,18 @@ function UbytovanieSection() {
           </span>
         </li>
         <li>
-          · S hotelom komunikuj pod heslom <strong>„Svadba Schultz“</strong> a menom hlavnej osoby, na koho je izba nahlásená.
+          · S hotelom komunikuj pod heslom <strong>„Svadba Schultz“</strong> a menom protagonistu, na ktorého je izba nahlásená.
         </li>
       </ul>
     </div>
   );
 
   return (
-    <Section id="ubytovanie" level="Level 04" title="Ubytovanie: spoločný save point">
+    <Section id="ubytovanie" level="Level 04" title="Hotel, aneb čik-čik domček">
       <p className="max-w-3xl text-[color:var(--paper)]/85 leading-relaxed mb-6">
         Pre hostí máme predbežne dohodnuté ubytovanie v Hoteli Continental na noc
         <strong> zo soboty 10.10.2026 na nedeľu 11.10.2026</strong>. Poprosíme ťa o potvrdenie
-        rezervácie pre vás — alternatívne si môžeš nájsť ubytovanie po vlastnej osi.
+        rezervácie pre všetky osoby, za ktoré rezerváciu vypĺňaš. Ak ťa náš výber neoslovil, môžeš si nájsť ubytovanie po vlastnej osi.
       </p>
 
       {sent ? (
@@ -2304,7 +1933,7 @@ function TetrominoSwatch({ color, cells }: { color: string; cells: readonly Tetr
 
 function DresscodeSection() {
   return (
-    <Section id="dresscode" level="Level 06" title="Dresscode: elegantne, ale hravo">
+    <Section id="dresscode" level="Level 06" title="Dresscode: elegantne a hravo">
       <p className="max-w-3xl text-[color:var(--paper)]/85 leading-relaxed mb-8">
         Budeme radi, keď prídete slávnostne, pohodlne a tak, aby ste sa cítili dobre.
         Farby a štýl nech pokojne ladia s jesennou, bordovo-zlatou, hravou náladou.
@@ -2326,10 +1955,10 @@ function DresscodeSection() {
             Do&apos;s
           </h3>
           <ul className="space-y-2 font-hand text-lg text-[color:var(--ink)]">
-            <li>· Slávnostné oblečenie</li>
-            <li>· Pohodlné topánky na tanec</li>
-            <li>· Jednofarebné jesenné / hravé tóny vítané</li>
-            <li>· Osobitosť povolená</li>
+            <li>· Slávnostne elegantné oblečenie</li>
+            <li>· Pohodlné topánky na pretancovanú noc</li>
+            <li>· Jednofarebné jesenné / hravé tóny schvaľujeme</li>
+            <li>· Diamanty a zlaté reťaze</li>
           </ul>
         </div>
         <div className="paper-card p-6">
@@ -2339,8 +1968,8 @@ function DresscodeSection() {
           </h3>
           <ul className="space-y-2 font-hand text-lg text-[color:var(--ink)]">
             <li>· Biele šaty (ak nie si nevesta)</li>
-            <li>· Tepláky</li>
-            <li>· Outfit, v ktorom nevydržíš tancovať</li>
+            <li>· Tepláky, kraťasy či kapsáče</li>
+            <li>· Obuv, v ktorej nevydržíš tancovať alebo sa veľmo spotíš</li>
             <li>· Cosplay draka len po schválení novomanželmi</li>
           </ul>
         </div>

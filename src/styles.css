@@ -554,17 +554,42 @@
   .program-trail {
     min-height: 62rem;
     max-width: 100%;
+    overflow: hidden;
   }
 
   .program-trail-label {
-    min-width: 12rem;
-    max-width: min(22rem, calc(100vw - 7rem));
+    min-width: 0;
+    max-width: min(17.5rem, calc(100vw - 5.5rem));
     left: 3.25rem;
+    padding: 0.5rem 0.85rem;
   }
 
   .program-trail-label--wide {
-    min-width: 18rem;
-    max-width: min(30rem, calc(100vw - 5rem));
+    min-width: 0;
+    max-width: min(17.5rem, calc(100vw - 5.5rem));
+  }
+
+  .program-trail-copy {
+    row-gap: 0.2rem;
+  }
+
+  .program-trail-time {
+    flex: 0 0 auto;
+    margin-right: 0;
+  }
+
+  .program-trail-title {
+    flex: 1 1 8rem;
+    min-width: 0;
+    font-size: 1.35rem;
+    line-height: 1.15;
+  }
+
+  .program-trail-place {
+    flex: 1 1 100%;
+    margin-left: 0;
+    font-size: 1rem;
+    line-height: 1.2;
   }
 
   .program-trail-node {
