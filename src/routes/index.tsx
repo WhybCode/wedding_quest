@@ -2090,6 +2090,83 @@ function RsvpSection() {
 // ============ POKRM (per-guest picker) ============
 type MealPick = { mealKey: string; kids: boolean };
 
+function MealChefToPhotoCue() {
+  const arrowhead = (
+    <marker
+      id="meal-chef-photo-arrowhead"
+      viewBox="0 0 8 8"
+      refX="6.5"
+      refY="4"
+      markerWidth="6"
+      markerHeight="6"
+      orient="auto"
+    >
+      <path
+        d="M1 1.5 L6.5 4 L1 6.5"
+        stroke="currentColor"
+        strokeWidth="1.35"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </marker>
+  );
+
+  return (
+    <>
+      <svg
+        className="pointer-events-none absolute -bottom-2 left-[calc(100%-2.25rem)] z-10 hidden h-12 w-[6.75rem] text-[color:var(--gold)] md:block"
+        viewBox="0 0 108 44"
+        fill="none"
+        aria-hidden
+      >
+        <defs>{arrowhead}</defs>
+        <path
+          d="M6 14 C 24 30, 48 32, 68 22 C 82 12, 94 4, 102 2"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeDasharray="5 4"
+          strokeLinecap="round"
+          markerEnd="url(#meal-chef-photo-arrowhead)"
+        />
+      </svg>
+      <svg
+        className="pointer-events-none absolute -bottom-16 left-[calc(100%-4rem)] z-10 block h-[5.5rem] w-11 text-[color:var(--gold)] md:hidden"
+        viewBox="0 0 44 80"
+        fill="none"
+        aria-hidden
+      >
+        <defs>
+          <marker
+            id="meal-chef-photo-arrowhead-mobile"
+            viewBox="0 0 8 8"
+            refX="6.5"
+            refY="4"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto"
+          >
+            <path
+              d="M1 1.5 L6.5 4 L1 6.5"
+              stroke="currentColor"
+              strokeWidth="1.35"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </marker>
+        </defs>
+        <path
+          d="M36 6 C 20 24, 38 38, 10 72"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeDasharray="5 4"
+          strokeLinecap="round"
+          markerEnd="url(#meal-chef-photo-arrowhead-mobile)"
+        />
+      </svg>
+    </>
+  );
+}
+
 function PokrmSection() {
   const guests = useGuests().filter((g) => g.attending);
   const [picks, setPicks] = useState<Record<string, MealPick>>({});
@@ -2164,29 +2241,34 @@ function PokrmSection() {
         <form onSubmit={onSubmit} className="space-y-6">
           <input type="text" name="hp" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden />
 
-          <div className="paper-card overflow-hidden p-5 md:py-6 md:pl-6 md:pr-0">
+          <div className="paper-card overflow-visible p-5 md:py-6 md:pl-6 md:pr-0">
             <div className="grid gap-5 md:grid-cols-[minmax(0,0.95fr)_min(50%,360px)] md:items-start">
-              <div>
+              <div className="overflow-visible">
                 <p className="font-hand text-lg leading-snug text-[color:var(--ink)]/80">
                   Aby ste si svadobnu hostinu vychutnali, zvoľte si čo vám je po chuti...
                 </p>
-                <ul className="mt-3.5 space-y-2.5">
+                <ul className="mt-3.5 space-y-2.5 overflow-visible">
                   {CONFIG.meals.map((m) => (
                     <li
                       key={m.key}
-                      className="rounded-md border-2 border-dashed border-[color:var(--bordo)] px-3 py-2.5"
+                      className={`relative overflow-visible rounded-md border-2 border-dashed border-[color:var(--bordo)] px-3 py-2.5 ${
+                        m.key === "sefkuchar" ? "z-10" : ""
+                      }`}
                     >
                       <p className="font-hand text-base font-semibold leading-tight text-[color:var(--bordo)]">{m.label}</p>
                       <p className="mt-0.5 text-sm leading-snug text-[color:var(--ink)]/75">{m.desc}</p>
+                      {m.key === "sefkuchar" && <MealChefToPhotoCue />}
                     </li>
                   ))}
                 </ul>
               </div>
-              <img
-                src={sitePath("photos/menu.jpg")}
-                alt="Menu svadobného grilovania"
-                className="w-full rounded-lg border-2 border-dashed border-[color:var(--gold)]/40 object-cover shadow-sm md:min-h-[280px] md:justify-self-end"
-              />
+              <div className="overflow-hidden rounded-lg md:rounded-r-none">
+                <img
+                  src={sitePath("photos/menu.jpg")}
+                  alt="Menu svadobného grilovania"
+                  className="w-full border-2 border-dashed border-[color:var(--gold)]/40 object-cover shadow-sm md:min-h-[280px] md:justify-self-end md:rounded-l-lg md:rounded-r-none md:border-r-0"
+                />
+              </div>
             </div>
           </div>
 
@@ -2821,7 +2903,7 @@ function DarySection() {
 // ============ DEŇ ============
 function DenSection() {
   return (
-    <Section id="den" level="Level 08" title="XP quest">
+    <Section id="den" level="Level 08" title="Quest XP">
       <div className="paper-card p-6 md:p-10 relative overflow-hidden">
         <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-[color:var(--turquoise)]/30 blur-2xl" />
         <div className="absolute -left-8 -bottom-8 h-40 w-40 rounded-full bg-[color:var(--blush)]/30 blur-2xl" />
