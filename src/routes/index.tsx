@@ -102,9 +102,21 @@ const CONFIG = {
   photoUploadUrl: "https://drive.google.com/drive/folders/1HX-JrCV7PUJ9KLZ3z5_yQj88bmHFaXPN?usp=sharing",
   // Trojica jedál na výber pre hostí
   meals: [
-    { key: "meat", label: "Bravčové medailónky", desc: "Jemné mäso s omáčkou, zemiakovým pyré a sezónnou zeleninou." },
-    { key: "veg", label: "Ratatouille & halloumi", desc: "Pečená zelenina s grilovaným syrom a bylinkovým olejom." },
-    { key: "fish", label: "Losos na masle", desc: "Filet s citrónovým dresingom, špenátom a ryžou." },
+    {
+      key: "nevesta",
+      label: "Nevestina voľba",
+      desc: "Grilované kuracie špízy, grilované zemiaky, šmakózna zelenina, humus a tahini.",
+    },
+    {
+      key: "zenich",
+      label: "Ženíchova voľba",
+      desc: "Grilované kuracie prsia, grilovaný syr paneer, hranolky, šmakózna zelenina a zelená majonéza.",
+    },
+    {
+      key: "sefkuchar",
+      label: "Voľba šéfkuchára",
+      desc: "Grilované jahňacie, grilované zemiaky, pita, šmakózna zelenina a humus.",
+    },
   ] as const,
   // Cenník izieb (Kč / noc, vrátane raňajok)
   rooms: [
