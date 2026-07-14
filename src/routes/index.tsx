@@ -1,7 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { toast, Toaster } from "sonner";
 import { CursorHearts } from "../components/CursorHearts";
+import {
+  FooterPartnerStickman,
+  FOOTER_PARTNER_LINE_POS,
+  isStickmanMeetClose,
+  ProgramTrailStickman,
+  SectionStickmanRail,
+  StickmanMeetHeart,
+} from "../components/QuestStickman";
 import { TetrisBackground } from "../components/TetrisDecor";
 import { WeddingMap, MapMarkerIcon } from "../components/WeddingMap";
 import photoManifest from "../data/photo-manifest.json";
@@ -44,10 +52,10 @@ const CONFIG = {
     oto: { phone: "+421 949 127 356", email: "oto.schultz.o3@gmail.com" },
   },
   maps: {
-    hotel: "https://www.google.com/maps/place/Kounicova+680%2F6,+602+00+Brno/@49.2005075,16.6046812,17z",
-    zraz: "https://www.google.com/maps/place/Kounicova+680%2F6,+602+00+Brno/@49.2005075,16.6046812,17z",
-    kostol: "https://www.google.com/maps/place/Kostel+svat%C3%A9ho+Jakuba,+Jakubsk%C3%A9+n%C3%A1m%C4%9Bst%C3%AD,+Brno/@49.1966056,16.6083647,17z",
-    kumst: "https://www.google.com/maps/place/KUMST/@49.196831,16.600333,17z",
+    hotel: "https://maps.app.goo.gl/VpT7aXx7cn22k6YMA",
+    zraz: "https://maps.app.goo.gl/VpT7aXx7cn22k6YMA",
+    kostol: "https://maps.app.goo.gl/neQhvFuGKpXvciWT6",
+    kumst: "https://maps.app.goo.gl/6jTyfog5wV9YqcAL6",
   },
   /** Lokácie svadby — súradnice pre mapu a karty */
   locations: [
@@ -59,7 +67,7 @@ const CONFIG = {
       image: "photos/lokacia_1.jpg",
       lat: 49.2005075,
       lng: 16.6046812,
-      url: "https://www.google.com/maps/place/Kounicova+680%2F6,+602+00+Brno/@49.2005075,16.6046812,17z",
+      url: "https://maps.app.goo.gl/VpT7aXx7cn22k6YMA",
     },
     {
       id: "kostol",
@@ -69,7 +77,7 @@ const CONFIG = {
       image: "photos/lokacia_2.jpg",
       lat: 49.1966056,
       lng: 16.6083647,
-      url: "https://www.google.com/maps/place/Kostel+svat%C3%A9ho+Jakuba,+Jakubsk%C3%A9+n%C3%A1m%C4%9Bst%C3%AD,+Brno/@49.1966056,16.6083647,17z",
+      url: "https://maps.app.goo.gl/neQhvFuGKpXvciWT6",
     },
     {
       id: "kumst",
@@ -79,7 +87,7 @@ const CONFIG = {
       image: "photos/lokacia_3.jpg",
       lat: 49.196831,
       lng: 16.600333,
-      url: "https://www.google.com/maps/place/KUMST/@49.196831,16.600333,17z",
+      url: "https://maps.app.goo.gl/6jTyfog5wV9YqcAL6",
     },
   ],
   /** Voliteľná vlastná mapa (obrázok v public/) namiesto OpenStreetMap — napr. "/maps/brno-custom.png" */
@@ -89,9 +97,9 @@ const CONFIG = {
     phone: "+420 541 519 609",
     email: "info@continentalbrno.cz",
   },
-  qrPayment: "https://placehold.co/220x220/f5e9c8/3a1418?text=QR+platba",
-  qrPhotos: "https://placehold.co/220x220/f5e9c8/3a1418?text=QR+fotky",
-  photoUploadUrl: "#",
+  qrPayment: sitePath("photos/QR_money.png"),
+  qrPhotos: sitePath("photos/QR_photos.png"),
+  photoUploadUrl: "https://drive.google.com/drive/folders/1HX-JrCV7PUJ9KLZ3z5_yQj88bmHFaXPN?usp=sharing",
   // Trojica jedál na výber pre hostí
   meals: [
     { key: "meat", label: "Bravčové medailónky", desc: "Jemné mäso s omáčkou, zemiakovým pyré a sezónnou zeleninou." },
@@ -166,11 +174,33 @@ const SECTIONS = [
   { id: "faq", label: "Ešte niečo...?", icon: HelpCircle },
 ];
 const CHECK_KEY = "no-wedding-checked-v1";
+const STICKMAN_LINE_MIN = 2;
+const STICKMAN_LINE_MAX = 98;
+const STICKMAN_START_LINE_POS = 88;
+const STICKMAN_LINE_STEP = 8;
+const PROGRAM_TRAIL_SEGMENT_COUNT = 7;
+
+type StickmanContextValue = {
+  sectionId: string;
+  linePos: number;
+  programStop: number;
+  jumping: boolean;
+};
+
+const StickmanContext = createContext<StickmanContextValue>({
+  sectionId: "hero",
+  linePos: STICKMAN_START_LINE_POS,
+  programStop: 0,
+  jumping: false,
+});
 
 const SECTION_IDS = [
   "hero", "program", "lokacie", "rsvp", "ubytovanie", "pokrm",
   "dresscode", "dary", "den", "brno", "fotky", "faq", "kontakt",
 ] as const;
+
+const FOOTER_STICKMAN_ID = "footer" as const;
+const STICKMAN_NAV_IDS = [...SECTION_IDS, FOOTER_STICKMAN_ID] as const;
 
 function getScrollOffset() {
   return window.matchMedia("(min-width: 1024px)").matches ? 16 : 68;
@@ -208,6 +238,61 @@ function getActiveChecklistId(): string {
   return "hero";
 }
 
+function getCurrentSectionIndex() {
+  const edge = getScrollOffset();
+  const marker = edge + 96;
+
+  for (let i = SECTION_IDS.length - 1; i >= 0; i--) {
+    const el = document.getElementById(SECTION_IDS[i]);
+    if (!el) continue;
+    const rect = el.getBoundingClientRect();
+    if (rect.top <= marker && rect.bottom > edge) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+function getCurrentStickmanSectionIndex() {
+  const footerLine = document.getElementById("quest-footer-line");
+  if (footerLine) {
+    const edge = getScrollOffset();
+    const rect = footerLine.getBoundingClientRect();
+    const lineY = rect.bottom;
+    if (lineY <= edge + 160 && lineY >= edge - 40) {
+      return STICKMAN_NAV_IDS.length - 1;
+    }
+  }
+  return getCurrentSectionIndex();
+}
+
+function scrollToStickmanTarget(navId: (typeof STICKMAN_NAV_IDS)[number], behavior: ScrollBehavior = "smooth") {
+  if (navId === FOOTER_STICKMAN_ID) {
+    const el = document.getElementById("quest-footer-line");
+    if (!el) return;
+    const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    const lineY = el.getBoundingClientRect().bottom + window.scrollY;
+    const targetTop = Math.min(Math.max(0, lineY - getScrollOffset() - 24), maxScroll);
+    window.scrollTo({ top: targetTop, behavior });
+    return;
+  }
+
+  const el = document.getElementById(navId);
+  if (el) scrollToSection(el, behavior);
+}
+
+function getStickmanNavIndex(keyboardNavIndex: number | null) {
+  if (keyboardNavIndex !== null) return keyboardNavIndex;
+  return getCurrentStickmanSectionIndex();
+}
+
+function isTypingTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  return target.isContentEditable;
+}
+
 function scrollToSection(el: HTMLElement, behavior: ScrollBehavior = "smooth") {
   const top = el.getBoundingClientRect().top + window.scrollY - getScrollOffset();
   window.scrollTo({ top, behavior });
@@ -229,6 +314,23 @@ function WeddingSite() {
   const [active, setActive] = useState<string>("hero");
   const [mobileOpen, setMobileOpen] = useState(false);
   const pendingScrollRef = useRef<string | null>(null);
+  const keyboardNavIndexRef = useRef<number | null>(null);
+  const [stickmanSectionIdx, setStickmanSectionIdx] = useState(0);
+  const [stickmanLinePos, setStickmanLinePos] = useState(STICKMAN_START_LINE_POS);
+  const [stickmanProgramStop, setStickmanProgramStop] = useState(0);
+  const [stickmanJumping, setStickmanJumping] = useState(false);
+  const stickmanJumpTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const stickmanLinePosRef = useRef(STICKMAN_START_LINE_POS);
+  const stickmanProgramStopRef = useRef(0);
+
+  stickmanLinePosRef.current = stickmanLinePos;
+  stickmanProgramStopRef.current = stickmanProgramStop;
+
+  const pulseStickmanJump = () => {
+    clearTimeout(stickmanJumpTimerRef.current);
+    setStickmanJumping(true);
+    stickmanJumpTimerRef.current = setTimeout(() => setStickmanJumping(false), 280);
+  };
 
   // Load persisted checks
   useEffect(() => {
@@ -255,12 +357,19 @@ function WeddingSite() {
     const syncActive = () => {
       if (pendingScrollRef.current) return;
       clearTimeout(activeTimer);
-      activeTimer = setTimeout(() => setActive(getActiveChecklistId()), 100);
+      activeTimer = setTimeout(() => {
+        setActive(getActiveChecklistId());
+        setStickmanSectionIdx(getStickmanNavIndex(keyboardNavIndexRef.current));
+      }, 100);
     };
 
-    const onResize = () => setActive(getActiveChecklistId());
+    const onResize = () => {
+      setActive(getActiveChecklistId());
+      setStickmanSectionIdx(getStickmanNavIndex(keyboardNavIndexRef.current));
+    };
 
     setActive(getActiveChecklistId());
+    setStickmanSectionIdx(getStickmanNavIndex(keyboardNavIndexRef.current));
     window.addEventListener("scroll", syncActive, { passive: true });
     window.addEventListener("resize", onResize);
     return () => {
@@ -270,8 +379,156 @@ function WeddingSite() {
     };
   }, []);
 
+  // Šípky hore/dole — skok po sekciách; vľavo/vpravo — po čiare / bublinkách
+  useEffect(() => {
+    const goToStickmanSection = (
+      nextIdx: number,
+      placement?: { linePos?: number; programStop?: number },
+    ) => {
+      if (nextIdx < 0 || nextIdx >= STICKMAN_NAV_IDS.length) return;
+
+      keyboardNavIndexRef.current = nextIdx;
+      setStickmanSectionIdx(nextIdx);
+      const navId = STICKMAN_NAV_IDS[nextIdx];
+
+      if (placement?.programStop !== undefined) {
+        setStickmanProgramStop(placement.programStop);
+      }
+      if (placement?.linePos !== undefined) {
+        setStickmanLinePos(placement.linePos);
+      }
+
+      pulseStickmanJump();
+      const checklistId = navId === FOOTER_STICKMAN_ID
+        ? sectionToChecklist("kontakt")
+        : sectionToChecklist(navId);
+
+      pendingScrollRef.current = checklistId;
+      setActive(checklistId);
+      const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth";
+      scrollToStickmanTarget(navId, behavior);
+      window.setTimeout(() => {
+        pendingScrollRef.current = null;
+      }, navId === FOOTER_STICKMAN_ID ? 1200 : 600);
+    };
+
+    const crossSectionHorizontal = (currentIdx: number, direction: 1 | -1) => {
+      const nextIdx = currentIdx + direction;
+      if (nextIdx < 0 || nextIdx >= STICKMAN_NAV_IDS.length) return;
+
+      const nextId = STICKMAN_NAV_IDS[nextIdx];
+      const placement: { linePos?: number; programStop?: number } = {};
+
+      if (direction > 0) {
+        if (nextId === "program") placement.programStop = 0;
+        else placement.linePos = STICKMAN_LINE_MIN;
+      } else if (nextId === "program") {
+        placement.programStop = PROGRAM_TRAIL_SEGMENT_COUNT - 1;
+      } else {
+        placement.linePos = STICKMAN_LINE_MAX;
+      }
+
+      goToStickmanSection(nextIdx, placement);
+    };
+
+    const navigateSection = (direction: 1 | -1) => {
+      const currentIdx = getStickmanNavIndex(keyboardNavIndexRef.current);
+      const nextIdx = direction > 0
+        ? Math.min(currentIdx + 1, STICKMAN_NAV_IDS.length - 1)
+        : Math.max(currentIdx - 1, 0);
+
+      if (nextIdx === currentIdx) return;
+
+      const navId = STICKMAN_NAV_IDS[nextIdx];
+      goToStickmanSection(
+        nextIdx,
+        navId === "hero" ? { linePos: STICKMAN_START_LINE_POS } : undefined,
+      );
+    };
+
+    const moveStickmanHorizontal = (delta: 1 | -1) => {
+      const sectionIdx = getStickmanNavIndex(keyboardNavIndexRef.current);
+      const sectionId = STICKMAN_NAV_IDS[sectionIdx];
+      const maxIdx = STICKMAN_NAV_IDS.length - 1;
+
+      if (sectionId === "program") {
+        const stop = stickmanProgramStopRef.current;
+        const nextStop = stop + delta;
+        if (nextStop < 0) {
+          if (sectionIdx > 0) crossSectionHorizontal(sectionIdx, -1);
+          return;
+        }
+        if (nextStop >= PROGRAM_TRAIL_SEGMENT_COUNT) {
+          if (sectionIdx < maxIdx) crossSectionHorizontal(sectionIdx, 1);
+          return;
+        }
+        setStickmanProgramStop(nextStop);
+        return;
+      }
+
+      const pos = stickmanLinePosRef.current;
+      const nextPos = pos + delta * STICKMAN_LINE_STEP;
+
+      if (nextPos < STICKMAN_LINE_MIN) {
+        if (sectionIdx > 0) crossSectionHorizontal(sectionIdx, -1);
+        else setStickmanLinePos(STICKMAN_LINE_MIN);
+        return;
+      }
+      if (nextPos > STICKMAN_LINE_MAX) {
+        if (sectionIdx < maxIdx) crossSectionHorizontal(sectionIdx, 1);
+        else setStickmanLinePos(STICKMAN_LINE_MAX);
+        return;
+      }
+      setStickmanLinePos(nextPos);
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.key === " " || e.code === "Space") {
+        e.preventDefault();
+        pulseStickmanJump();
+        return;
+      }
+
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        moveStickmanHorizontal(e.key === "ArrowRight" ? 1 : -1);
+        return;
+      }
+
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      e.preventDefault();
+      navigateSection(e.key === "ArrowDown" ? 1 : -1);
+    };
+
+    const resetKeyboardNav = () => {
+      keyboardNavIndexRef.current = null;
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("wheel", resetKeyboardNav, { passive: true });
+    window.addEventListener("touchstart", resetKeyboardNav, { passive: true });
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("wheel", resetKeyboardNav);
+      window.removeEventListener("touchstart", resetKeyboardNav);
+      clearTimeout(stickmanJumpTimerRef.current);
+    };
+  }, []);
+
   const scrollTo = (id: string) => {
     const sectionId = checklistToSection(id);
+    const navIdx = SECTION_IDS.indexOf(sectionId as (typeof SECTION_IDS)[number]);
+    if (navIdx >= 0) {
+      keyboardNavIndexRef.current = navIdx;
+      setStickmanSectionIdx(navIdx);
+      pulseStickmanJump();
+    }
+
     pendingScrollRef.current = id;
     setActive(id);
     const el = document.getElementById(sectionId);
@@ -296,8 +553,19 @@ function WeddingSite() {
 
   const progress = Math.round((checked.size / SECTIONS.length) * 100);
 
+  const stickmanContextValue = useMemo<StickmanContextValue>(
+    () => ({
+      sectionId: STICKMAN_NAV_IDS[stickmanSectionIdx] ?? "hero",
+      linePos: stickmanLinePos,
+      programStop: stickmanProgramStop,
+      jumping: stickmanJumping,
+    }),
+    [stickmanSectionIdx, stickmanLinePos, stickmanProgramStop, stickmanJumping],
+  );
+
   return (
     <div className="relative min-h-screen overflow-x-visible">
+      <StickmanContext.Provider value={stickmanContextValue}>
       <Toaster position="top-center" richColors />
       <CursorHearts />
       <PaperTexture />
@@ -341,6 +609,7 @@ function WeddingSite() {
         onToggleCheck={toggleCheck}
         progress={progress}
       />
+      </StickmanContext.Provider>
     </div>
   );
 }
@@ -411,7 +680,7 @@ const EDGE_PHOTO_CAPTIONS: { place: string; year: string }[] = [
   // foto_6
   { place: "Paris, FR", year: "2025" },
   // foto_7
-  { place: "Brno, CZ", year: "2022" },
+  { place: "Hverir, IS", year: "2022" },
   // foto_8
   { place: "Brno, CZ", year: "2026" },
   // foto_9
@@ -439,7 +708,7 @@ const EDGE_PHOTO_CAPTIONS: { place: string; year: string }[] = [
   // foto_20
   { place: "Brno, CZ", year: "2020" },
   // foto_21
-  { place: "Ostrov Man, IM", year: "2022" },
+  { place: "Vestmannaeyjar, IM", year: "2022" },
   // foto_22
   { place: "Špačince, SK", year: "2020" },
   // foto_23
@@ -451,7 +720,7 @@ const EDGE_PHOTO_CAPTIONS: { place: string; year: string }[] = [
   // foto_26
   { place: "Brno, CZ", year: "2023" },
   // foto_27
-  { place: "Pafos, CY", year: "2022" },
+  { place: "Paphos, CY", year: "2022" },
   // foto_28 — pravý okraj, dole
   { place: "Brno, CZ", year: "2022" },
 ];
@@ -476,6 +745,11 @@ const EDGE_PHOTO_ROT_OVERRIDES: Record<number, number> = {
   9: -4.5,
   14: 3.5,
   15: -3.5,
+};
+
+/** Výnimky orezania — index 0 = foto 1 */
+const EDGE_PHOTO_IMG_CLASS_OVERRIDES: Partial<Record<number, string>> = {
+  23: "edge-photo-img--night",
 };
 
 function polaroidPlaceholder(n: number) {
@@ -509,15 +783,29 @@ function EdgePolaroid({ index, columnIndex, side, total }: { index: number; colu
       }}
     >
       <div className="tape tape-center" />
-      <img
-        key={photoSrc ?? `ph-${index}`}
-        src={showPlaceholder ? polaroidPlaceholder(index) : photoSrc}
-        alt=""
-        className="edge-photo-img"
-        decoding="async"
-        loading="lazy"
-        onError={() => setImgFailed(true)}
-      />
+      {EDGE_PHOTO_IMG_CLASS_OVERRIDES[index] === "edge-photo-img--night" ? (
+        <div className="edge-polaroid__img-frame--night">
+          <img
+            key={photoSrc ?? `ph-${index}`}
+            src={showPlaceholder ? polaroidPlaceholder(index) : photoSrc}
+            alt=""
+            className="edge-photo-img edge-photo-img--night"
+            decoding="async"
+            loading="lazy"
+            onError={() => setImgFailed(true)}
+          />
+        </div>
+      ) : (
+        <img
+          key={photoSrc ?? `ph-${index}`}
+          src={showPlaceholder ? polaroidPlaceholder(index) : photoSrc}
+          alt=""
+          className="edge-photo-img"
+          decoding="async"
+          loading="lazy"
+          onError={() => setImgFailed(true)}
+        />
+      )}
       <p
         className={`edge-photo-caption font-hand ${edgePhotoCaptionIsPlaceholder(index) ? "edge-photo-caption--placeholder" : ""}`}
       >
@@ -591,8 +879,8 @@ function ChecklistItem({
 }) {
   return (
     <div
-      className={`group flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors ${
-        active ? "bg-[color:var(--gold)]/15" : "hover:bg-[color:var(--ink)]/5"
+      className={`group flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-[color:var(--ink)]/5 ${
+        active ? "bg-[color:var(--gold)]/15" : ""
       }`}
     >
       <button
@@ -618,7 +906,7 @@ function ChecklistItem({
       >
         {s.label}
       </button>
-      {active && <ChevronRight className="ml-auto h-4 w-4 text-[color:var(--bordo)]" />}
+      <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-[color:var(--bordo)] opacity-0 transition-opacity group-hover:opacity-100" />
     </div>
   );
 }
@@ -634,7 +922,7 @@ function DesktopChecklist({
     <aside className="fixed right-6 top-6 bottom-6 z-30 hidden w-[320px] overflow-visible lg:block">
       <div className="paper-card notebook-lines relative h-full overflow-visible p-5 pt-8">
         <div className="tape" />
-        <div className="flex h-full min-h-0 flex-col">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden">
         <div className="mb-3 flex items-baseline justify-between border-b-2 border-dashed border-[color:var(--ink)]/20 pb-2">
           <h2 className="font-marker text-xl text-[color:var(--bordo)]">Quest log</h2>
           <span className="font-hand text-xl text-[color:var(--ink)]/70">{progress}%</span>
@@ -643,7 +931,7 @@ function DesktopChecklist({
           <div className="h-full rounded-full bg-[color:var(--turquoise)] transition-all" style={{ width: `${progress}%` }} />
         </div>
         <p className="mb-2 font-hand text-xs text-[color:var(--ink)]/60">Odčiarkni si sám, keď máš hotovo ✍️</p>
-        <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto pr-1">
+        <div className="checklist-menu-scroll min-h-0 flex-1 space-y-0.5">
           {SECTIONS.map((s) => (
             <ChecklistItem
               key={s.id} s={s}
@@ -652,9 +940,92 @@ function DesktopChecklist({
             />
           ))}
         </div>
+        <StickmanControlHintsDesktop />
         </div>
       </div>
     </aside>
+  );
+}
+
+function StickmanArrowKeysHint() {
+  return (
+    <svg
+      className="quest-stickman-keys"
+      viewBox="0 0 56 34"
+      fill="none"
+      aria-hidden
+    >
+      <rect x="20" y="1" width="16" height="13" rx="2" stroke="currentColor" strokeWidth="1.1" />
+      <path d="M28 4.5 L31.5 9.5 H24.5 Z" fill="currentColor" />
+
+      <rect x="2" y="18" width="16" height="13" rx="2" stroke="currentColor" strokeWidth="1.1" />
+      <path d="M5.5 24.5 L10.5 21 V28 Z" fill="currentColor" />
+
+      <rect x="20" y="18" width="16" height="13" rx="2" stroke="currentColor" strokeWidth="1.1" />
+      <path d="M28 28.5 L24.5 23.5 H31.5 Z" fill="currentColor" />
+
+      <rect x="38" y="18" width="16" height="13" rx="2" stroke="currentColor" strokeWidth="1.1" />
+      <path d="M50.5 24.5 L45.5 21 V28 Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function StickmanCurvedCue() {
+  return (
+    <svg
+      className="quest-stickman-hint__curved-cue"
+      viewBox="0 0 44 30"
+      fill="none"
+      aria-hidden
+    >
+      <defs>
+        <marker
+          id="hint-hand-arrow"
+          viewBox="0 0 8 8"
+          refX="6.5"
+          refY="4"
+          markerWidth="6"
+          markerHeight="6"
+          orient="auto"
+        >
+          <path
+            d="M1 1.5 L6.5 4 L1 6.5"
+            stroke="currentColor"
+            strokeWidth="1.35"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </marker>
+      </defs>
+      <path
+        d="M1 24 C 10 25, 22 16, 40 12"
+        stroke="currentColor"
+        strokeWidth="1.55"
+        strokeLinecap="round"
+        markerEnd="url(#hint-hand-arrow)"
+      />
+    </svg>
+  );
+}
+
+function StickmanControlHintsDesktop() {
+  return (
+    <div
+      className="quest-stickman-hint quest-stickman-hint--checklist hidden lg:block"
+      aria-label="Pssst, skús ovládať postavičku šípkami"
+    >
+      <p className="quest-stickman-hint__whisper">Pssst, skús</p>
+      <StickmanCurvedCue />
+      <StickmanArrowKeysHint />
+    </div>
+  );
+}
+
+function StickmanControlHintsMobile() {
+  return (
+    <p className="quest-stickman-hint quest-stickman-hint--mobile-pc">
+      Psst... pre lepší zážitok sa presuň na PC
+    </p>
   );
 }
 
@@ -680,14 +1051,17 @@ function MobileChecklist({
         <ChevronDown className={`h-4 w-4 text-[color:var(--paper)] transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <div className="paper-card mx-3 mt-2 max-h-[70vh] overflow-y-auto p-3">
-          {SECTIONS.map((s) => (
-            <ChecklistItem
-              key={s.id} s={s}
-              done={checked.has(s.id)} active={active === s.id}
-              onPick={onPick} onToggleCheck={onToggleCheck}
-            />
-          ))}
+        <div className="paper-card mx-3 mt-2 flex max-h-[70vh] flex-col overflow-hidden p-3">
+          <div className="checklist-menu-scroll min-h-0 flex-1 space-y-0.5">
+            {SECTIONS.map((s) => (
+              <ChecklistItem
+                key={s.id} s={s}
+                done={checked.has(s.id)} active={active === s.id}
+                onPick={onPick} onToggleCheck={onToggleCheck}
+              />
+            ))}
+          </div>
+          <StickmanControlHintsMobile />
         </div>
       )}
     </div>
@@ -698,13 +1072,22 @@ function MobileChecklist({
 function Section({
   id, level, title, children,
 }: { id: string; level: string; title: string; children: React.ReactNode }) {
+  const stickman = useContext(StickmanContext);
+  const showStickman =
+    id === "program"
+      ? stickman.sectionId === "hero"
+      : stickman.sectionId === id;
+
   return (
     <section id={id} className="scroll-mt-[4.25rem] py-16 pb-24 lg:scroll-mt-4 lg:py-24 lg:pb-32">
-      <div className="mb-8 flex items-end gap-4">
+      <div className="relative mb-8 flex items-end gap-4">
         <span className="font-marker text-sm uppercase tracking-widest text-[color:var(--turquoise)]">
           {level}
         </span>
-        <div className="h-px flex-1 border-t-2 border-dashed border-[color:var(--gold)]/40" />
+        <div className="relative flex-1 pt-[22px]">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 border-t-2 border-dashed border-[color:var(--gold)]/40" />
+          <SectionStickmanRail linePos={stickman.linePos} visible={showStickman} jumping={stickman.jumping} />
+        </div>
       </div>
       <h2 className="font-display text-4xl md:text-5xl lg:text-6xl text-[color:var(--paper)] mb-8">
         {title}
@@ -803,7 +1186,7 @@ function HeroMobilePhoto() {
   const showPlaceholder = !photoSrc || imgFailed;
 
   return (
-    <div className="hero-intro-photo -mt-2 mb-1 flex w-full justify-end pr-10 sm:pr-14 md:pr-20 lg:hidden">
+    <div className="hero-intro-photo mb-1 flex w-full justify-end pr-10 sm:pr-14 md:pr-20 lg:hidden">
       <div className="edge-polaroid w-[2.45rem] max-w-[38vw] rotate-[5deg] pointer-events-none cursor-default p-0.5 pb-1 shadow-sm">
         <div className="tape tape-center scale-[0.52]" />
         <img
@@ -826,6 +1209,7 @@ function HeroMobilePhoto() {
 
 function HeroSection() {
   const c = useCountdown(CONFIG.dateISO);
+
   return (
     <section id="hero" className="pt-8 lg:pt-16 pb-6">
       <div className="grid gap-8 lg:grid-cols-[1.3fr_1fr] items-center">
@@ -844,7 +1228,7 @@ function HeroSection() {
           <div className="ticker-line my-6 max-w-xl" />
           <p className="max-w-xl text-lg text-[color:var(--paper)]/80 leading-relaxed">
             Spúšťame našu najväčšiu co-op výzvu a chceme, aby ste boli pri tom!
-            Ulož si náš dátum, odčiarkaj si Quest log a daj nám vedieť, či ťa zbadáme nielen spoza oltára, ale aj na tanečnom parkete.
+            Ulož si náš dátum, odčiarkaj si quest log a daj nám vedieť, či ťa zbadáme nielen spoza oltára, ale aj na tanečnom parkete.
             Poprosíme ťa tiež o potvrdenie rezervácie nami objednaného ubytovania, ak si neplánuješ hľadať
             po vlastnej osi alternatívu.
           </p>
@@ -859,7 +1243,7 @@ function HeroSection() {
           </div>
         </div>
 
-        <div className="relative z-40 ml-4 md:ml-8">
+        <div className="hero-save-date-card relative z-40 ml-4 md:ml-8">
           <div className="paper-card relative mx-auto max-w-sm overflow-visible p-6 rotate-2">
             <div className="tape" />
             <p className="absolute top-5 right-5 font-body text-sm text-[color:var(--ink)]">2026</p>
@@ -900,7 +1284,7 @@ function MiniCalendar() {
   for (let i = 1; i < startDay; i++) cells.push(null);
   for (let d = 1; d <= days; d++) cells.push(d);
   return (
-    <div className="mt-4 rounded-md border border-[color:var(--ink)]/20 bg-[color:var(--paper)] p-3">
+    <div className="hero-mini-calendar rounded-md border border-[color:var(--ink)]/20 bg-[color:var(--paper)] p-3">
       <div className="grid grid-cols-7 gap-1 text-center font-hand text-xs text-[color:var(--ink)]/60">
         {["P", "U", "S", "Š", "P", "S", "N"].map((d, i) => <div key={i}>{d}</div>)}
       </div>
@@ -947,6 +1331,7 @@ const PROGRAM = [
 ];
 
 const PROGRAM_TRAIL_WIDE = new Set(["Check-in v hoteli", "Zraz"]);
+const PROGRAM_TRAIL_LIFT = new Set(["Zraz", "Hostina", "Nočný raut"]);
 
 type TrailPoint = { x: number; y: number };
 
@@ -965,6 +1350,24 @@ const PROGRAM_TRAIL_STOPS: TrailPoint[] = [
 /** Šírka jednotlivých oblúkov — plynulé, nerovnomerné */
 const PROGRAM_TRAIL_BULGES = [9, -13, 8, -14, 11, -10, 16];
 
+function getProgramTrailBezier(segmentIndex: number) {
+  const p0 = PROGRAM_TRAIL_STOPS[segmentIndex];
+  const p2 = PROGRAM_TRAIL_STOPS[segmentIndex + 1];
+  const bulge = PROGRAM_TRAIL_BULGES[segmentIndex] ?? 10;
+  const p1 = { x: (p0.x + p2.x) / 2 + bulge, y: (p0.y + p2.y) / 2 };
+  return { p0, p1, p2 };
+}
+
+/** Bod na čiare trailu medzi nodmi — t=0.5 je stred úseku */
+function getProgramTrailPointOnSegment(segmentIndex: number, t = 0.5): TrailPoint {
+  const { p0, p1, p2 } = getProgramTrailBezier(segmentIndex);
+  const u = 1 - t;
+  return {
+    x: u * u * p0.x + 2 * u * t * p1.x + t * t * p2.x,
+    y: u * u * p0.y + 2 * u * t * p1.y + t * t * p2.y,
+  };
+}
+
 function buildProgramTrailPath(stops: TrailPoint[]) {
   if (stops.length < 2) return "";
   let d = `M ${stops[0].x} ${stops[0].y}`;
@@ -981,6 +1384,18 @@ function buildProgramTrailPath(stops: TrailPoint[]) {
 
 function ProgramTrail() {
   const pathD = buildProgramTrailPath(PROGRAM_TRAIL_STOPS);
+  const stickman = useContext(StickmanContext);
+  const showStickman = stickman.sectionId === "program";
+  const segmentIdx = Math.max(0, Math.min(PROGRAM_TRAIL_SEGMENT_COUNT - 1, stickman.programStop));
+  const linePos = getProgramTrailPointOnSegment(segmentIdx, 0.5);
+  const prevLinePos = getProgramTrailPointOnSegment(Math.max(0, segmentIdx - 1), 0.5);
+  const nextLinePos = getProgramTrailPointOnSegment(
+    Math.min(PROGRAM_TRAIL_SEGMENT_COUNT - 1, segmentIdx + 1),
+    0.5,
+  );
+  const stickmanFacing: "left" | "right" = segmentIdx < PROGRAM_TRAIL_SEGMENT_COUNT - 1
+    ? (nextLinePos.x >= linePos.x ? "right" : "left")
+    : (linePos.x >= prevLinePos.x ? "right" : "left");
 
   return (
     <div className="program-trail">
@@ -993,14 +1408,24 @@ function ProgramTrail() {
         <path d={pathD} className="program-trail-line" vectorEffect="non-scaling-stroke" />
       </svg>
 
+      {showStickman && (
+        <ProgramTrailStickman
+          left={linePos.x}
+          top={linePos.y}
+          facing={stickmanFacing}
+          jumping={stickman.jumping}
+        />
+      )}
+
       {PROGRAM.map((p, i) => {
         const stop = PROGRAM_TRAIL_STOPS[i];
         const isWide = PROGRAM_TRAIL_WIDE.has(p.title);
+        const liftStop = PROGRAM_TRAIL_LIFT.has(p.title);
 
         return (
           <div
             key={p.title}
-            className="program-trail-stop"
+            className={`program-trail-stop${liftStop ? " program-trail-stop--lift" : ""}`}
             style={{ left: `${stop.x}%`, top: `${stop.y}%` }}
           >
             <span
@@ -1011,17 +1436,17 @@ function ProgramTrail() {
               {p.icon}
             </span>
             <div className={`program-trail-label${isWide ? " program-trail-label--wide" : ""}`}>
-              <div className="program-trail-copy flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                <span className="program-trail-time font-hand text-xl md:text-2xl">
+              <div className="program-trail-copy">
+                <span className="program-trail-time font-hand">
                   {p.time}
                 </span>
-                <h3 className="program-trail-title font-display text-2xl">{p.title}</h3>
+                <h3 className="program-trail-title font-display">{p.title}</h3>
                 {p.place && p.url && (
                   <a
                     href={p.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="program-trail-place font-hand text-xl transition"
+                    className="program-trail-place font-hand transition"
                   >
                     📍 {p.place}
                   </a>
@@ -1050,7 +1475,7 @@ function ProgramSection() {
 // ============ LOKÁCIE ============
 function LokacieSection() {
   return (
-    <Section id="lokacie" level="Level 02" title="Lokácie">
+    <Section id="lokacie" level="Level 02" title="Checkpoint lokácie">
       <div className="grid gap-6 md:grid-cols-3">
         {CONFIG.locations.map((l, i) => (
           <div key={l.name} className="paper-card p-5" style={{ transform: `rotate(${(i - 1) * 0.6}deg)` }}>
@@ -1068,8 +1493,14 @@ function LokacieSection() {
                 </div>
               )}
             </div>
-            <h3 className="font-display text-2xl text-[color:var(--bordo)]">{l.name}</h3>
+            <h3 className="font-display text-2xl text-[color:var(--bordo)] flex items-center gap-2.5">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[color:var(--bordo)] text-[color:var(--bordo)]">
+                <MapMarkerIcon id={l.id} className="h-4 w-4" />
+              </span>
+              {l.name}
+            </h3>
             <p className="mt-1 font-hand text-lg text-[color:var(--ink)]/80">{l.desc}</p>
+            {l.id === "kumst" && <div className="h-5" aria-hidden />}
             <p className="mt-2 text-sm text-[color:var(--ink)]/60">{l.addr}</p>
             <a
               href={l.url}
@@ -1083,20 +1514,11 @@ function LokacieSection() {
         ))}
       </div>
 
-      <div className="paper-card mt-8 p-4">
-        <p className="font-hand text-xl text-[color:var(--ink)] mb-3">🗺️ Spoločná mapa</p>
+      <div className="paper-card mt-8 overflow-hidden p-3 sm:p-4">
         <WeddingMap
           locations={CONFIG.locations}
           customImage={CONFIG.mapCustomImage ? sitePath(CONFIG.mapCustomImage.replace(/^\//, "")) : undefined}
         />
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 font-hand text-base text-[color:var(--ink)]/75">
-          {CONFIG.locations.map((l) => (
-            <span key={l.id} className="inline-flex items-center gap-1.5 text-[color:var(--bordo)]">
-              <MapMarkerIcon id={l.id} />
-              <span className="text-[color:var(--ink)]/75">{l.name}</span>
-            </span>
-          ))}
-        </div>
       </div>
     </Section>
   );
@@ -1207,12 +1629,12 @@ function RsvpSection() {
 
   if (sent) {
     return (
-      <Section id="rsvp" level="Level 03" title="No čo, dojdeš gádžo?">
+      <Section id="rsvp" level="Level 03" title="RSVP aneb prezenčka">
         <div className="paper-card p-8 text-center">
           <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-[color:var(--turquoise)] text-[color:var(--bordo-deep)]">
             <Check className="h-10 w-10" strokeWidth={3} />
           </div>
-          <h3 className="mt-4 font-display text-3xl text-[color:var(--bordo)]">Úloha splnená!</h3>
+          <h3 className="mt-4 font-display text-3xl text-[color:var(--bordo)]">+8XP!</h3>
           <p className="mt-2 font-hand text-xl text-[color:var(--ink)]">
             Ďakujeme! Uložili sme si tvoju odpoveď. Uvidíme sa 10.10.2026.
           </p>
@@ -1229,7 +1651,7 @@ function RsvpSection() {
   }
 
   return (
-    <Section id="rsvp" level="Level 03" title="No čo, dojdeš gádžo?">
+    <Section id="rsvp" level="Level 03" title="RSVP aneb prezenčka">
       <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-2xl">
         Bez potvrdenia účasti sa quest log neuloží. Prosíme, daj nám vedieť čo najskôr.
       </p>
@@ -1367,7 +1789,7 @@ function PokrmSection() {
   }
 
   return (
-    <Section id="pokrm" level="Level 05" title="Výber svadobného power-upu">
+    <Section id="pokrm" level="Level 05" title="Výber power-upu">
       {guests.length === 0 ? (
         <div className="paper-card p-6 text-center">
           <p className="font-hand text-xl text-[color:var(--ink)]">
@@ -1683,7 +2105,7 @@ function UbytovanieSection() {
   );
 
   return (
-    <Section id="ubytovanie" level="Level 04" title="Hotel, aneb čik-čik domček">
+    <Section id="ubytovanie" level="Level 04" title="Hotel a la čik-čik domček">
       <p className="max-w-3xl text-[color:var(--paper)]/85 leading-relaxed mb-6">
         Pre hostí máme predbežne dohodnuté ubytovanie v Hoteli Continental na noc
         <strong> zo soboty 10.10.2026 na nedeľu 11.10.2026</strong>. Poprosíme ťa o potvrdenie
@@ -1933,10 +2355,10 @@ function TetrominoSwatch({ color, cells }: { color: string; cells: readonly Tetr
 
 function DresscodeSection() {
   return (
-    <Section id="dresscode" level="Level 06" title="Dresscode: elegantne a hravo">
+    <Section id="dresscode" level="Level 06" title="Dresscode (skin pack)">
       <p className="max-w-3xl text-[color:var(--paper)]/85 leading-relaxed mb-8">
-        Budeme radi, keď prídete slávnostne, pohodlne a tak, aby ste sa cítili dobre.
-        Farby a štýl nech pokojne ladia s jesennou, bordovo-zlatou, hravou náladou.
+        Dresscode sa nesie v hesle „elegantne ale hravo“. Budeme radi, keď prídete slávnostne, ale najmä pohodlne a tak, aby ste sa cítili dobre.
+        Farby a štýl nech pokojne ladia s jesennou, hravou náladou.
       </p>
       <div className="mb-6 grid w-full max-w-2xl grid-cols-6 gap-2 sm:gap-2.5">
         {DRESSCODE_PALETTE.map((piece, i) => (
@@ -2003,8 +2425,10 @@ function DarySection() {
           <p className="mt-1 font-hand text-lg text-[color:var(--ink)]/80">
             Pre tých, ktorí majú radšej rýchly checkout než obálkový inventory.
           </p>
-          <div className="mt-3 grid place-items-center">
-            <img src={CONFIG.qrPayment} alt="QR kód pre platbu" className="h-60 w-60 rounded-md" />
+          <div className="mt-11 grid place-items-center">
+            <div className="h-48 w-48 overflow-hidden rounded-md">
+              <img src={CONFIG.qrPayment} alt="QR kód pre platbu" className="qr-code-img" />
+            </div>
           </div>
           {/* <p className="mt-2 text-center text-xs text-[color:var(--ink)]/60">QR placeholder</p> */}
         </div>
@@ -2016,7 +2440,7 @@ function DarySection() {
 // ============ DEŇ ============
 function DenSection() {
   return (
-    <Section id="den" level="Level 08" title="Uži si náš deň">
+    <Section id="den" level="Level 08" title="XP quest">
       <div className="paper-card p-6 md:p-10 relative overflow-hidden">
         <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-[color:var(--turquoise)]/30 blur-2xl" />
         <div className="absolute -left-8 -bottom-8 h-40 w-40 rounded-full bg-[color:var(--blush)]/30 blur-2xl" />
@@ -2041,7 +2465,7 @@ function DenSection() {
 // ============ FOTKY ============
 function FotkySection() {
   return (
-    <Section id="fotky" level="Level 10" title="Zdieľaj s nami svoje zábery">
+    <Section id="fotky" level="Level 10" title="Foto save point">
       <div className="grid gap-6 md:grid-cols-2">
         <div className="paper-card p-6">
           <p className="font-hand text-2xl text-[color:var(--bordo)]">
@@ -2053,6 +2477,8 @@ function FotkySection() {
           </p>
           <a
             href={CONFIG.photoUploadUrl}
+            target="_blank"
+            rel="noreferrer"
             className="mt-5 inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]"
           >
             <Camera className="h-4 w-4" /> Nahrať fotky
@@ -2061,9 +2487,10 @@ function FotkySection() {
         <div className="paper-card p-6 text-center">
           <p className="font-marker text-xs uppercase text-[color:var(--bordo)]">Alebo naskenuj</p>
           <div className="mt-3 grid place-items-center">
-            <img src={CONFIG.qrPhotos} alt="QR kód na nahrávanie fotiek" className="h-48 w-48 rounded-md" />
+            <div className="h-48 w-48 overflow-hidden rounded-md">
+              <img src={CONFIG.qrPhotos} alt="QR kód na nahrávanie fotiek" className="qr-code-img" />
+            </div>
           </div>
-          <p className="mt-3 font-hand text-lg text-[color:var(--ink)]/70">QR placeholder</p>
         </div>
       </div>
     </Section>
@@ -2082,9 +2509,9 @@ const BRNO_TIPS = [
 
 function BrnoSection() {
   return (
-    <Section id="brno" level="Level 09" title="Brno: tipy na predĺženú návštevu">
+    <Section id="brno" level="Level 09" title="DLC: Brno">
       <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-2xl">
-        Ak plánuješ zostať v Brne dlhšie, mesto má čo ponúknuť. Tu je pár tipov — doplníme ich ešte o naše obľúbené miesta.
+        Ak si plánuješ návštevu v Brne predĺžiť, mesto má veru čo ponúknuť, tu je pár tipov na preskúmanie...
       </p>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {BRNO_TIPS.map((tip, i) => (
@@ -2187,7 +2614,7 @@ function FaqSection() {
             ))}
           </div>
           <p className="mt-2 text-center text-xs text-[color:var(--ink)]/50">
-            Statický NPC poradca · {FAQ.length} otázok
+            {/* Statický NPC poradca · {FAQ.length} otázok */}
           </p>
         </div>
       </div>
@@ -2197,16 +2624,27 @@ function FaqSection() {
 
 // ============ KONTAKT ============
 function KontaktSection() {
+  const stickman = useContext(StickmanContext);
+  const meetClose = isStickmanMeetClose(stickman.sectionId, stickman.linePos);
+  const meetHeartPos = (stickman.linePos + FOOTER_PARTNER_LINE_POS) / 2;
+
   return (
     <section
       id="kontakt"
       className="flex min-h-[calc(100dvh-4.25rem)] flex-col py-16 lg:min-h-[calc(100dvh-1rem)] lg:py-24"
     >
-      <div className="mb-8 flex items-end gap-4">
+      <div className="relative mb-8 flex items-end gap-4">
         <span className="font-marker text-sm uppercase tracking-widest text-[color:var(--turquoise)]">
           Level 12
         </span>
-        <div className="h-px flex-1 border-t-2 border-dashed border-[color:var(--gold)]/40" />
+        <div className="relative flex-1 pt-[22px]">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 border-t-2 border-dashed border-[color:var(--gold)]/40" />
+          <SectionStickmanRail
+            linePos={stickman.linePos}
+            visible={stickman.sectionId === "kontakt"}
+            jumping={stickman.jumping}
+          />
+        </div>
       </div>
       <h2 className="font-display text-4xl md:text-5xl lg:text-6xl text-[color:var(--paper)] mb-8">
         Kontakt
@@ -2238,7 +2676,17 @@ function KontaktSection() {
         ))}
       </div>
       <div className="flex-1 min-h-[4rem]" />
-      <footer className="mt-auto border-t-2 border-dashed border-[color:var(--gold)]/30 pt-8 pb-6 text-center">
+      <footer id="quest-footer" className="mt-auto pb-6 text-center">
+        <div id="quest-footer-line" className="relative mb-8 pt-[22px]">
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 border-t-2 border-dashed border-[color:var(--gold)]/30" />
+          <FooterPartnerStickman />
+          <StickmanMeetHeart leftPos={meetHeartPos} visible={meetClose} />
+          <SectionStickmanRail
+            linePos={stickman.linePos}
+            visible={stickman.sectionId === "footer"}
+            jumping={stickman.jumping}
+          />
+        </div>
         <p className="font-marker text-lg text-[color:var(--gold)]">
           Natália &amp; Oto · 10.10.2026 · Brno
         </p>
