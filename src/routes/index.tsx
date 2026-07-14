@@ -214,6 +214,9 @@ const SECTION_IDS = [
 const FOOTER_STICKMAN_ID = "footer" as const;
 const STICKMAN_NAV_IDS = [...SECTION_IDS, FOOTER_STICKMAN_ID] as const;
 
+/** Zdieľaný stav pre scroll sync — číta sa synchronne mimo React renderu */
+const stickmanProgramEngagedRef = { current: false };
+
 function getScrollOffset() {
   return window.matchMedia("(min-width: 1024px)").matches ? 16 : 68;
 }
@@ -265,17 +268,180 @@ function getCurrentSectionIndex() {
   return 0;
 }
 
-function getCurrentStickmanSectionIndex() {
-  const footerLine = document.getElementById("quest-footer-line");
-  if (footerLine) {
-    const edge = getScrollOffset();
-    const rect = footerLine.getBoundingClientRect();
-    const lineY = rect.bottom;
-    if (lineY <= edge + 160 && lineY >= edge - 40) {
-      return STICKMAN_NAV_IDS.length - 1;
+function getStickmanRailRect(navId: (typeof STICKMAN_NAV_IDS)[number]): DOMRect | null {
+  if (navId === FOOTER_STICKMAN_ID) {
+    return document.getElementById("quest-footer-line")?.getBoundingClientRect() ?? null;
+  }
+  if (navId === "hero") {
+    return document.querySelector<HTMLElement>('[data-stickman-rail="hero-program"]')?.getBoundingClientRect() ?? null;
+  }
+  if (navId === "program") {
+    return document.querySelector<HTMLElement>('[data-stickman-rail="program-trail"]')?.getBoundingClientRect() ?? null;
+  }
+  return document.querySelector<HTMLElement>(`[data-stickman-rail="${navId}"]`)?.getBoundingClientRect() ?? null;
+}
+
+function getStickmanCheckpointLineY(navId: (typeof STICKMAN_NAV_IDS)[number]): number | null {
+  const rect = getStickmanRailRect(navId);
+  if (!rect) return null;
+  if (navId === "program") {
+    return Math.min(Math.max((rect.top + rect.bottom) / 2, rect.top), rect.bottom);
+  }
+  return rect.bottom;
+}
+
+function isHeaderLineVisible(lineY: number, viewportTop: number, viewportBottom: number) {
+  return lineY >= viewportTop - 8 && lineY <= viewportBottom + 8;
+}
+
+function isHeroStickmanLineVisible(viewportTop: number, viewportBottom: number) {
+  const lineY = getStickmanCheckpointLineY("hero");
+  return lineY !== null && isHeaderLineVisible(lineY, viewportTop, viewportBottom);
+}
+
+function isProgramStickmanLineVisible(viewportTop: number, viewportBottom: number) {
+  if (isHeroStickmanLineVisible(viewportTop, viewportBottom)) return false;
+  if (getCurrentSectionIndex() > 1) return false;
+  const rect = getStickmanRailRect("program");
+  if (!rect) return false;
+  return rect.top < viewportBottom && rect.bottom > viewportTop;
+}
+
+function isStickmanCheckpointVisible(
+  navId: (typeof STICKMAN_NAV_IDS)[number],
+  viewportTop: number,
+  viewportBottom: number,
+) {
+  if (navId === "hero") return isHeroStickmanLineVisible(viewportTop, viewportBottom);
+  if (navId === "program") return isProgramStickmanLineVisible(viewportTop, viewportBottom);
+
+  const lineY = getStickmanCheckpointLineY(navId);
+  return lineY !== null && isHeaderLineVisible(lineY, viewportTop, viewportBottom);
+}
+
+function resolveFooterStickmanIndex(): number | null {
+  const footerIdx = STICKMAN_NAV_IDS.length - 1;
+  const kontakt = document.getElementById("kontakt");
+  if (!kontakt) return null;
+
+  const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  const endSlack = 0;
+
+  if (window.scrollY < maxScroll - endSlack) return null;
+
+  const kontaktTop = kontakt.getBoundingClientRect().top + window.scrollY;
+  if (window.scrollY + getScrollOffset() < kontaktTop - 8) return null;
+
+  return footerIdx;
+}
+
+function getCurrentStickmanSectionIndex(currentIdx = 0, programStop = 0) {
+  const edge = getScrollOffset();
+  const anchor = edge + 96;
+  const viewportTop = edge;
+  const viewportBottom = window.innerHeight;
+  const bandTop = anchor - 32;
+  const bandBottom = anchor + 160;
+  const heroIdx = STICKMAN_NAV_IDS.indexOf("hero");
+  const programIdx = STICKMAN_NAV_IDS.indexOf("program");
+
+  if (stickmanProgramEngagedRef.current && getCurrentSectionIndex() <= 1) {
+    return programIdx;
+  }
+
+  const footerResolved = resolveFooterStickmanIndex();
+  if (footerResolved !== null) {
+    return footerResolved;
+  }
+
+  type Candidate = { idx: number; lineY: number; dist: number };
+  const visible: Candidate[] = [];
+  const inBand: Candidate[] = [];
+
+  for (let i = 0; i < STICKMAN_NAV_IDS.length; i++) {
+    const navId = STICKMAN_NAV_IDS[i];
+    if (!isStickmanCheckpointVisible(navId, viewportTop, viewportBottom)) continue;
+    const lineY = getStickmanCheckpointLineY(navId);
+    if (lineY === null) continue;
+    const candidate = { idx: i, lineY, dist: Math.abs(lineY - anchor) };
+    visible.push(candidate);
+
+    const inReadingBand = navId === "program"
+      ? (() => {
+          const rect = getStickmanRailRect("program");
+          return !!rect && rect.top < bandBottom && rect.bottom > bandTop;
+        })()
+      : lineY >= bandTop && lineY <= bandBottom;
+    if (inReadingBand) inBand.push(candidate);
+  }
+
+  const pickHeroOrProgram = (candidates: Candidate[]) => {
+    const hasHero = candidates.some((c) => c.idx === heroIdx);
+    const hasProgram = candidates.some((c) => c.idx === programIdx);
+    if (!hasHero || !hasProgram) return null;
+    if (stickmanProgramEngagedRef.current) return programIdx;
+    if (currentIdx === programIdx || programStop > 0) return programIdx;
+    if (currentIdx === heroIdx) return heroIdx;
+    return null;
+  };
+
+  if (inBand.length > 0) {
+    const footerInBand = resolveFooterStickmanIndex();
+    if (footerInBand !== null) return footerInBand;
+    const heroProgramPick = pickHeroOrProgram(inBand);
+    if (heroProgramPick !== null) return heroProgramPick;
+    inBand.sort((a, b) => a.dist - b.dist);
+    return inBand[0].idx;
+  }
+
+  const currentNavId = STICKMAN_NAV_IDS[currentIdx];
+  if (currentNavId && isStickmanCheckpointVisible(currentNavId, viewportTop, viewportBottom)) {
+    return currentIdx;
+  }
+
+  if (visible.length > 0) {
+    const footerPick = resolveFooterStickmanIndex();
+    if (footerPick !== null) return footerPick;
+    const heroProgramPick = pickHeroOrProgram(visible);
+    if (heroProgramPick !== null) return heroProgramPick;
+    visible.sort((a, b) => a.dist - b.dist);
+    return visible[0].idx;
+  }
+
+  let bestIdx = 0;
+  let bestAbove = -Infinity;
+
+  for (let i = 0; i < STICKMAN_NAV_IDS.length; i++) {
+    const lineY = getStickmanCheckpointLineY(STICKMAN_NAV_IDS[i]);
+    if (lineY === null || lineY > anchor) continue;
+    if (lineY > bestAbove) {
+      bestAbove = lineY;
+      bestIdx = i;
     }
   }
-  return getCurrentSectionIndex();
+
+  if (bestAbove > -Infinity) {
+    const footerPick = resolveFooterStickmanIndex();
+    if (footerPick !== null) return footerPick;
+    return bestIdx;
+  }
+
+  let nearestIdx = 0;
+  let nearestDist = Infinity;
+  for (let i = 0; i < STICKMAN_NAV_IDS.length; i++) {
+    const lineY = getStickmanCheckpointLineY(STICKMAN_NAV_IDS[i]);
+    if (lineY === null) continue;
+    const dist = Math.abs(lineY - anchor);
+    if (dist < nearestDist) {
+      nearestDist = dist;
+      nearestIdx = i;
+    }
+  }
+
+  const footerPick = resolveFooterStickmanIndex();
+  if (footerPick !== null) return footerPick;
+
+  return nearestIdx;
 }
 
 function scrollToStickmanTarget(navId: (typeof STICKMAN_NAV_IDS)[number], behavior: ScrollBehavior = "smooth") {
@@ -334,9 +500,12 @@ function WeddingSite() {
   const stickmanJumpTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const stickmanLinePosRef = useRef(STICKMAN_START_LINE_POS);
   const stickmanProgramStopRef = useRef(0);
+  const stickmanSectionIdxRef = useRef(0);
+  const stickmanManualModeRef = useRef(false);
 
   stickmanLinePosRef.current = stickmanLinePos;
   stickmanProgramStopRef.current = stickmanProgramStop;
+  stickmanSectionIdxRef.current = stickmanSectionIdx;
 
   const pulseStickmanJump = () => {
     clearTimeout(stickmanJumpTimerRef.current);
@@ -364,63 +533,114 @@ function WeddingSite() {
 
   // Aktívna položka checklistu podľa scroll pozície
   useEffect(() => {
-    let activeTimer: ReturnType<typeof setTimeout>;
+    let rafId: number | null = null;
 
     const syncActive = () => {
       if (pendingScrollRef.current) return;
-      clearTimeout(activeTimer);
-      activeTimer = setTimeout(() => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
         setActive(getActiveChecklistId());
-        setStickmanSectionIdx(getStickmanNavIndex(keyboardNavIndexRef.current));
-      }, 100);
+        if (stickmanManualModeRef.current || stickmanProgramEngagedRef.current) return;
+        keyboardNavIndexRef.current = null;
+        setStickmanSectionIdx(getCurrentStickmanSectionIndex(
+          stickmanSectionIdxRef.current,
+          stickmanProgramStopRef.current,
+        ));
+      });
     };
 
     const onResize = () => {
+      if (!stickmanManualModeRef.current && !stickmanProgramEngagedRef.current) {
+        keyboardNavIndexRef.current = null;
+        setStickmanSectionIdx(getCurrentStickmanSectionIndex(
+          stickmanSectionIdxRef.current,
+          stickmanProgramStopRef.current,
+        ));
+      }
       setActive(getActiveChecklistId());
-      setStickmanSectionIdx(getStickmanNavIndex(keyboardNavIndexRef.current));
     };
 
     setActive(getActiveChecklistId());
-    setStickmanSectionIdx(getStickmanNavIndex(keyboardNavIndexRef.current));
+    setStickmanSectionIdx(getCurrentStickmanSectionIndex(0, 0));
     window.addEventListener("scroll", syncActive, { passive: true });
     window.addEventListener("resize", onResize);
     return () => {
       window.removeEventListener("scroll", syncActive);
       window.removeEventListener("resize", onResize);
-      clearTimeout(activeTimer);
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
     };
   }, []);
 
   // Šípky hore/dole — skok po sekciách; vľavo/vpravo — po čiare / bublinkách
   useEffect(() => {
+    const programIdx = STICKMAN_NAV_IDS.indexOf("program");
+
+    const lockStickmanManualMode = () => {
+      stickmanManualModeRef.current = true;
+    };
+
+    const engageProgramTrail = () => {
+      stickmanProgramEngagedRef.current = true;
+    };
+
+    const releaseProgramTrail = () => {
+      stickmanProgramEngagedRef.current = false;
+    };
+
+    const applyStickmanSection = (
+      nextIdx: number,
+      placement?: { linePos?: number; programStop?: number },
+    ) => {
+      stickmanSectionIdxRef.current = nextIdx;
+      keyboardNavIndexRef.current = nextIdx;
+      setStickmanSectionIdx(nextIdx);
+
+      if (placement?.programStop !== undefined) {
+        stickmanProgramStopRef.current = placement.programStop;
+        setStickmanProgramStop(placement.programStop);
+      }
+      if (placement?.linePos !== undefined) {
+        stickmanLinePosRef.current = placement.linePos;
+        setStickmanLinePos(placement.linePos);
+      }
+    };
+
     const goToStickmanSection = (
       nextIdx: number,
       placement?: { linePos?: number; programStop?: number },
     ) => {
       if (nextIdx < 0 || nextIdx >= STICKMAN_NAV_IDS.length) return;
 
-      keyboardNavIndexRef.current = nextIdx;
-      setStickmanSectionIdx(nextIdx);
       const navId = STICKMAN_NAV_IDS[nextIdx];
-
-      if (placement?.programStop !== undefined) {
-        setStickmanProgramStop(placement.programStop);
-      }
-      if (placement?.linePos !== undefined) {
-        setStickmanLinePos(placement.linePos);
-      }
-
-      pulseStickmanJump();
       const checklistId = navId === FOOTER_STICKMAN_ID
         ? sectionToChecklist("kontakt")
         : sectionToChecklist(navId);
 
       pendingScrollRef.current = checklistId;
+      lockStickmanManualMode();
+
+      if (navId === "program") {
+        engageProgramTrail();
+      } else if (navId === "hero") {
+        releaseProgramTrail();
+      }
+
+      applyStickmanSection(nextIdx, placement);
+      pulseStickmanJump();
       setActive(checklistId);
+
       const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
         ? "auto"
         : "smooth";
-      scrollToStickmanTarget(navId, behavior);
+
+      if (navId === "program") {
+        const stop = placement?.programStop ?? stickmanProgramStopRef.current;
+        scrollToProgramStickman(stop, behavior);
+      } else {
+        scrollToStickmanTarget(navId, behavior);
+      }
+
       window.setTimeout(() => {
         pendingScrollRef.current = null;
       }, navId === FOOTER_STICKMAN_ID ? 1200 : 600);
@@ -446,7 +666,7 @@ function WeddingSite() {
     };
 
     const navigateSection = (direction: 1 | -1) => {
-      const currentIdx = getStickmanNavIndex(keyboardNavIndexRef.current);
+      const currentIdx = keyboardNavIndexRef.current ?? stickmanSectionIdxRef.current;
       const nextIdx = direction > 0
         ? Math.min(currentIdx + 1, STICKMAN_NAV_IDS.length - 1)
         : Math.max(currentIdx - 1, 0);
@@ -454,16 +674,23 @@ function WeddingSite() {
       if (nextIdx === currentIdx) return;
 
       const navId = STICKMAN_NAV_IDS[nextIdx];
-      goToStickmanSection(
-        nextIdx,
-        navId === "hero" ? { linePos: STICKMAN_START_LINE_POS } : undefined,
-      );
+      const placement =
+        navId === "hero"
+          ? { linePos: STICKMAN_START_LINE_POS }
+          : navId === "program"
+            ? { programStop: 0 }
+            : undefined;
+
+      goToStickmanSection(nextIdx, placement);
     };
 
     const moveStickmanHorizontal = (delta: 1 | -1) => {
-      const sectionIdx = getStickmanNavIndex(keyboardNavIndexRef.current);
+      const sectionIdx = keyboardNavIndexRef.current ?? stickmanSectionIdxRef.current;
       const sectionId = STICKMAN_NAV_IDS[sectionIdx];
       const maxIdx = STICKMAN_NAV_IDS.length - 1;
+      const scrollBehavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth";
 
       if (sectionId === "program") {
         const stop = stickmanProgramStopRef.current;
@@ -476,7 +703,38 @@ function WeddingSite() {
           if (sectionIdx < maxIdx) crossSectionHorizontal(sectionIdx, 1);
           return;
         }
-        setStickmanProgramStop(nextStop);
+        pendingScrollRef.current = "program";
+        lockStickmanManualMode();
+        engageProgramTrail();
+        applyStickmanSection(programIdx, { programStop: nextStop });
+        window.requestAnimationFrame(() => {
+          scrollToProgramStickman(nextStop, scrollBehavior);
+        });
+        window.setTimeout(() => {
+          pendingScrollRef.current = null;
+        }, 400);
+        return;
+      }
+
+      if (sectionId === "hero") {
+        const pos = stickmanLinePosRef.current;
+        const nextPos = pos + delta * STICKMAN_LINE_STEP;
+        if (nextPos > STICKMAN_LINE_MAX) {
+          crossSectionHorizontal(sectionIdx, 1);
+          return;
+        }
+        if (nextPos < STICKMAN_LINE_MIN) {
+          stickmanLinePosRef.current = STICKMAN_LINE_MIN;
+          setStickmanLinePos(STICKMAN_LINE_MIN);
+          return;
+        }
+        pendingScrollRef.current = "hero";
+        lockStickmanManualMode();
+        stickmanLinePosRef.current = nextPos;
+        setStickmanLinePos(nextPos);
+        window.setTimeout(() => {
+          pendingScrollRef.current = null;
+        }, 200);
         return;
       }
 
@@ -493,6 +751,8 @@ function WeddingSite() {
         else setStickmanLinePos(STICKMAN_LINE_MAX);
         return;
       }
+      lockStickmanManualMode();
+      stickmanLinePosRef.current = nextPos;
       setStickmanLinePos(nextPos);
     };
 
@@ -504,6 +764,10 @@ function WeddingSite() {
         e.preventDefault();
         pulseStickmanJump();
         return;
+      }
+
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        if (e.repeat) return;
       }
 
       if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
@@ -519,6 +783,8 @@ function WeddingSite() {
 
     const resetKeyboardNav = () => {
       keyboardNavIndexRef.current = null;
+      stickmanManualModeRef.current = false;
+      stickmanProgramEngagedRef.current = false;
     };
 
     window.addEventListener("keydown", onKeyDown);
@@ -537,7 +803,12 @@ function WeddingSite() {
     const navIdx = SECTION_IDS.indexOf(sectionId as (typeof SECTION_IDS)[number]);
     if (navIdx >= 0) {
       keyboardNavIndexRef.current = navIdx;
+      stickmanSectionIdxRef.current = navIdx;
       setStickmanSectionIdx(navIdx);
+      if (sectionId === "program") {
+        stickmanProgramEngagedRef.current = true;
+        stickmanManualModeRef.current = true;
+      }
       pulseStickmanJump();
     }
 
@@ -547,7 +818,11 @@ function WeddingSite() {
     const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches
       ? "auto"
       : "smooth";
-    if (el) scrollToSection(el, behavior);
+    if (sectionId === "program") {
+      scrollToProgramStickman(stickmanProgramStopRef.current, behavior);
+    } else if (el) {
+      scrollToSection(el, behavior);
+    }
     setMobileOpen(false);
     window.setTimeout(() => {
       pendingScrollRef.current = null;
@@ -1096,7 +1371,10 @@ function Section({
         <span className="font-marker text-sm uppercase tracking-widest text-[color:var(--turquoise)]">
           {level}
         </span>
-        <div className="relative flex-1 pt-[22px]">
+        <div
+          className="relative flex-1 pt-[22px]"
+          data-stickman-rail={id === "program" ? "hero-program" : id}
+        >
           <div className="pointer-events-none absolute inset-x-0 bottom-0 border-t-2 border-dashed border-[color:var(--gold)]/40" />
           <SectionStickmanRail linePos={stickman.linePos} visible={showStickman} jumping={stickman.jumping} />
         </div>
@@ -1241,8 +1519,8 @@ function HeroSection() {
           <p className="max-w-xl text-lg text-[color:var(--paper)]/80 leading-relaxed">
             Spúšťame našu najväčšiu co-op výzvu a chceme, aby ste boli pri tom!
             Ulož si náš dátum, odčiarkaj si quest log a daj nám vedieť, či ťa zbadáme nielen spoza oltára, ale aj na tanečnom parkete.
-            Poprosíme ťa tiež o potvrdenie rezervácie nami objednaného ubytovania, ak si neplánuješ hľadať
-            po vlastnej osi alternatívu.
+            Poprosíme ťa tiež o potvrdenie rezervácie nami objednaného ubytovania, ak si neplánuješ hľadať alternatívu
+            po vlastnej osi.
           </p>
 
           <div className="mt-8 flex flex-wrap gap-3">
@@ -1380,6 +1658,63 @@ function getProgramTrailPointOnSegment(segmentIndex: number, t = 0.5): TrailPoin
   };
 }
 
+const STICKMAN_VIEW_PADDING = 40;
+
+/** Posunie stránku len ak je postavička mimo zorného poľa — väčším skokom, nie po každom kroku */
+function scrollStickmanYIntoViewIfNeeded(
+  stickmanY: number,
+  behavior: ScrollBehavior = "smooth",
+) {
+  const edge = getScrollOffset();
+  const visibleTop = edge + STICKMAN_VIEW_PADDING;
+  const visibleBottom = window.innerHeight - STICKMAN_VIEW_PADDING;
+
+  if (stickmanY >= visibleTop && stickmanY <= visibleBottom) return;
+
+  const targetY = edge + Math.round(window.innerHeight * 0.34);
+  const minReveal = Math.round(window.innerHeight * 0.28);
+
+  let delta = stickmanY - targetY;
+  if (stickmanY > visibleBottom) {
+    delta = Math.max(delta, minReveal);
+  } else if (stickmanY < visibleTop) {
+    delta = Math.min(delta, -minReveal);
+  }
+
+  if (Math.abs(delta) < 8) return;
+
+  const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  const targetTop = Math.min(Math.max(0, window.scrollY + delta), maxScroll);
+  window.scrollTo({ top: targetTop, behavior });
+}
+
+function scrollProgramTrailStopIntoView(
+  programStop: number,
+  behavior: ScrollBehavior = "smooth",
+) {
+  const trail = document.querySelector<HTMLElement>('[data-stickman-rail="program-trail"]');
+  if (!trail) return;
+
+  const rect = trail.getBoundingClientRect();
+  const segmentIdx = Math.max(0, Math.min(PROGRAM_TRAIL_SEGMENT_COUNT - 1, programStop));
+  const point = getProgramTrailPointOnSegment(segmentIdx, 0.5);
+  const stickmanY = rect.top + (rect.height * point.y) / 100;
+
+  scrollStickmanYIntoViewIfNeeded(stickmanY, behavior);
+}
+
+/** Stop 0 = zarovnanie sekcie ako ostatné; ďalšie zastávky = scroll po traili */
+function scrollToProgramStickman(
+  programStop: number,
+  behavior: ScrollBehavior = "smooth",
+) {
+  if (programStop <= 0) {
+    scrollToStickmanTarget("program", behavior);
+    return;
+  }
+  scrollProgramTrailStopIntoView(programStop, behavior);
+}
+
 function buildProgramTrailPath(stops: TrailPoint[]) {
   if (stops.length < 2) return "";
   let d = `M ${stops[0].x} ${stops[0].y}`;
@@ -1410,7 +1745,7 @@ function ProgramTrail() {
     : (linePos.x >= prevLinePos.x ? "right" : "left");
 
   return (
-    <div className="program-trail">
+    <div className="program-trail" data-stickman-rail="program-trail">
       <svg
         className="program-trail-svg"
         viewBox="0 0 100 100"
@@ -2649,7 +2984,7 @@ function KontaktSection() {
         <span className="font-marker text-sm uppercase tracking-widest text-[color:var(--turquoise)]">
           Level 12
         </span>
-        <div className="relative flex-1 pt-[22px]">
+        <div className="relative flex-1 pt-[22px]" data-stickman-rail="kontakt">
           <div className="pointer-events-none absolute inset-x-0 bottom-0 border-t-2 border-dashed border-[color:var(--gold)]/40" />
           <SectionStickmanRail
             linePos={stickman.linePos}
