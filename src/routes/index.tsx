@@ -110,7 +110,7 @@ const CONFIG = {
     {
       key: "zenich",
       label: "Ženíchova voľba",
-      desc: "Grilované kuracie prsia, grilovaný syr paneer, hranolky, šmakózna zelenina a zelená majonéza.",
+      desc: "Grilované kuracie prsia, syr paneer, hranolky, šmakózna zelenina a zelená majonéza.",
     },
     {
       key: "sefkuchar",
@@ -2161,56 +2161,90 @@ function PokrmSection() {
           </button>
         </div>
       ) : (
-        <form onSubmit={onSubmit} className="paper-card p-6 md:p-8 space-y-5">
+        <form onSubmit={onSubmit} className="space-y-6">
           <input type="text" name="hp" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden />
-          <p className="font-hand text-xl text-[color:var(--ink)]/80">
-            Pre každého hosťa vyber jedno z troch jedál. Ak ide o dieťa, zaklikni detskú porciu.
-          </p>
-          <div className="space-y-4">
-            {guests.map((g) => {
-              const pick = picks[g.id]?.mealKey ?? CONFIG.meals[0].key;
-              const kids = picks[g.id]?.kids ?? false;
-              return (
-                <div key={g.id} className="rounded-lg border border-dashed border-[color:var(--ink)]/30 bg-white/40 p-4">
-                  <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                    <h3 className="font-display text-xl text-[color:var(--bordo)]">{g.name}</h3>
-                    <label className="inline-flex items-center gap-2 font-hand text-base text-[color:var(--ink)]">
+
+          <div className="paper-card overflow-hidden p-5 md:py-6 md:pl-6 md:pr-0">
+            <div className="grid gap-5 md:grid-cols-[minmax(0,0.95fr)_min(50%,360px)] md:items-start">
+              <div>
+                <p className="font-hand text-lg leading-snug text-[color:var(--ink)]/80">
+                  Aby ste si svadobnu hostinu vychutnali, zvoľte si čo vám je po chuti...
+                </p>
+                <ul className="mt-3.5 space-y-2.5">
+                  {CONFIG.meals.map((m) => (
+                    <li
+                      key={m.key}
+                      className="rounded-md border-2 border-dashed border-[color:var(--bordo)] px-3 py-2.5"
+                    >
+                      <p className="font-hand text-base font-semibold leading-tight text-[color:var(--bordo)]">{m.label}</p>
+                      <p className="mt-0.5 text-sm leading-snug text-[color:var(--ink)]/75">{m.desc}</p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <img
+                src={sitePath("photos/menu.jpg")}
+                alt="Menu svadobného grilovania"
+                className="w-full rounded-lg border-2 border-dashed border-[color:var(--gold)]/40 object-cover shadow-sm md:min-h-[280px] md:justify-self-end"
+              />
+            </div>
+          </div>
+
+          <div className="paper-card p-6 md:p-8">
+            <h3 className="mb-5 font-marker text-sm uppercase tracking-widest text-[color:var(--turquoise)]">
+              Voľba pre hostí
+            </h3>
+            <div className="space-y-3">
+              {guests.map((g) => {
+                const pick = picks[g.id]?.mealKey ?? CONFIG.meals[0].key;
+                const kids = picks[g.id]?.kids ?? false;
+                return (
+                  <div
+                    key={g.id}
+                    className="flex flex-col gap-3 border-b border-dashed border-[color:var(--ink)]/15 pb-3 last:border-0 last:pb-0 sm:flex-row sm:items-center sm:gap-4"
+                  >
+                    <div className="min-w-0 shrink-0 sm:w-28">
+                      <p className="font-display text-lg text-[color:var(--bordo)]">{g.name}</p>
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
+                      {CONFIG.meals.map((m) => (
+                        <label
+                          key={m.key}
+                          className={`flex-1 cursor-pointer rounded-full border-2 px-4 py-2 text-center font-hand text-sm transition sm:text-base ${
+                            pick === m.key
+                              ? "border-[color:var(--bordo)] bg-[color:var(--gold)]/25 text-[color:var(--bordo-deep)]"
+                              : "border-dashed border-[color:var(--ink)]/30 text-[color:var(--ink)] hover:border-[color:var(--bordo)]"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name={`meal-${g.id}`}
+                            value={m.key}
+                            checked={pick === m.key}
+                            onChange={() => setPick(g.id, { mealKey: m.key })}
+                            className="sr-only"
+                          />
+                          {m.label}
+                        </label>
+                      ))}
+                    </div>
+                    <label className="inline-flex shrink-0 items-center gap-2 font-hand text-sm text-[color:var(--ink)] sm:w-32 sm:justify-end">
                       <input
-                        type="checkbox" checked={kids}
+                        type="checkbox"
+                        checked={kids}
                         onChange={(e) => setPick(g.id, { kids: e.target.checked })}
                         className="h-4 w-4 accent-[color:var(--bordo)]"
                       />
                       Detská porcia
                     </label>
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {CONFIG.meals.map((m) => (
-                      <label
-                        key={m.key}
-                        className={`cursor-pointer rounded-lg border-2 p-4 text-left transition ${
-                          pick === m.key
-                            ? "border-[color:var(--bordo)] bg-[color:var(--gold)]/20"
-                            : "border-dashed border-[color:var(--ink)]/30 hover:border-[color:var(--bordo)]"
-                        }`}
-                      >
-                        <input
-                          type="radio" name={`meal-${g.id}`} value={m.key}
-                          checked={pick === m.key}
-                          onChange={() => setPick(g.id, { mealKey: m.key })}
-                          className="sr-only"
-                        />
-                        <div className="font-hand text-lg font-semibold text-[color:var(--bordo)]">{m.label}</div>
-                        <p className="mt-1 text-sm leading-snug text-[color:var(--ink)]/75">{m.desc}</p>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+            <button type="submit" className="mt-6 inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]">
+              <Send className="h-4 w-4" /> Odoslať výber
+            </button>
           </div>
-          <button type="submit" className="inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]">
-            <Send className="h-4 w-4" /> Odoslať výber
-          </button>
         </form>
       )}
     </Section>
