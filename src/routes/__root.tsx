@@ -78,7 +78,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Natália & Oto — 10.10.2026 · Svadobný quest" },
+      { title: "10.10.2026 | Natália & Oto" },
       {
         name: "description",
         content:
@@ -96,7 +96,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
     links: [
       { rel: "stylesheet", href: appCss },
-      { rel: "icon", href: sitePath("favicon.ico"), type: "image/x-icon" },
+      { rel: "icon", href: sitePath("favicon.svg"), type: "image/svg+xml" },
+      { rel: "icon", href: sitePath("favicon.png"), sizes: "32x32", type: "image/png" },
+      { rel: "icon", href: sitePath("favicon.ico"), sizes: "32x32", type: "image/x-icon" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {

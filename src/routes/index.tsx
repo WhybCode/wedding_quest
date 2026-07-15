@@ -18,7 +18,7 @@ import {
   Heart, MapPin, Calendar as CalendarIcon, Music, Utensils, Sparkles,
   Camera, Gift, Shirt, HelpCircle, Phone, Mail, Check, ChevronDown,
   ChevronRight, Send, Bot, User as UserIcon, Download, ExternalLink,
-  Plus, Trash2, Car, Ban, CircleCheck,
+  Plus, Trash2, Car, Ban, CircleCheck, Trophy,
 } from "lucide-react";
 
 export const Route = createFileRoute("/")({ component: WeddingSite });
@@ -62,7 +62,7 @@ const CONFIG = {
     {
       id: "hotel",
       name: "Hotel Continental",
-      desc: "Ubytovanie & check-in + zraz. Vaša štartovná lokácia.",
+      desc: "Ubytovanie & check-in + zraz. Tvoja štartovná lokácia.",
       addr: "Kounicova 680/6, 602 00 Brno",
       image: "photos/lokacia_1.jpg",
       lat: 49.2005075,
@@ -72,7 +72,7 @@ const CONFIG = {
     {
       id: "kostol",
       name: "Kostol sv. Jakuba",
-      desc: "Obrad. Prosíme, príďte aspoň s 15 min rezervou.",
+      desc: "Obrad. Prosíme, príď aspoň s 15 min rezervou.",
       addr: "Jakubské náměstí, 602 00 Brno",
       image: "photos/lokacia_2.jpg",
       lat: 49.1966056,
@@ -183,9 +183,10 @@ const SECTIONS = [
   { id: "den", label: "Uži si náš deň", icon: Music },
   { id: "brno", label: "Objav Brno", icon: MapPin },
   { id: "fotky", label: "Zdieľaj s nami fotky", icon: Camera },
-  { id: "faq", label: "Ešte niečo...?", icon: HelpCircle },
+  { id: "faq", label: "Otázky?!", icon: HelpCircle },
 ];
 const CHECK_KEY = "no-wedding-checked-v1";
+const ACHIEVEMENT_KEY = "no-wedding-quest-achievement-v1";
 const STICKMAN_LINE_MIN = 2;
 const STICKMAN_LINE_MAX = 98;
 const STICKMAN_START_LINE_POS = 88;
@@ -476,6 +477,10 @@ function scrollToSection(el: HTMLElement, behavior: ScrollBehavior = "smooth") {
   window.scrollTo({ top, behavior });
 }
 
+function isQuestLogComplete(checked: Set<string>) {
+  return SECTIONS.every((s) => checked.has(s.id));
+}
+
 function markSectionChecked(id: string) {
   try {
     const raw = window.localStorage.getItem(CHECK_KEY);
@@ -491,6 +496,7 @@ function WeddingSite() {
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [active, setActive] = useState<string>("hero");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [achievementOpen, setAchievementOpen] = useState(false);
   const pendingScrollRef = useRef<string | null>(null);
   const keyboardNavIndexRef = useRef<number | null>(null);
   const [stickmanSectionIdx, setStickmanSectionIdx] = useState(0);
@@ -530,6 +536,15 @@ function WeddingSite() {
     window.addEventListener("wedding-check-update", sync);
     return () => window.removeEventListener("wedding-check-update", sync);
   }, []);
+
+  useEffect(() => {
+    if (!isQuestLogComplete(checked)) return;
+    try {
+      if (window.localStorage.getItem(ACHIEVEMENT_KEY) === "1") return;
+      window.localStorage.setItem(ACHIEVEMENT_KEY, "1");
+    } catch { /* noop */ }
+    setAchievementOpen(true);
+  }, [checked]);
 
   // Aktívna položka checklistu podľa scroll pozície
   useEffect(() => {
@@ -839,6 +854,7 @@ function WeddingSite() {
   };
 
   const progress = Math.round((checked.size / SECTIONS.length) * 100);
+  const questComplete = isQuestLogComplete(checked);
 
   const stickmanContextValue = useMemo<StickmanContextValue>(
     () => ({
@@ -854,6 +870,7 @@ function WeddingSite() {
     <div className="relative min-h-screen overflow-x-visible">
       <StickmanContext.Provider value={stickmanContextValue}>
       <Toaster position="top-center" richColors />
+      <QuestAchievementPopup open={achievementOpen} onClose={() => setAchievementOpen(false)} />
       <CursorHearts />
       <PaperTexture />
 
@@ -865,6 +882,7 @@ function WeddingSite() {
         onPick={scrollTo}
         onToggleCheck={toggleCheck}
         progress={progress}
+        questComplete={questComplete}
       />
 
       <div className="site-body relative">
@@ -895,6 +913,7 @@ function WeddingSite() {
         onPick={scrollTo}
         onToggleCheck={toggleCheck}
         progress={progress}
+        questComplete={questComplete}
       />
       </StickmanContext.Provider>
     </div>
@@ -1156,6 +1175,70 @@ function PaperTexture() {
 }
 
 // ============ CHECKLIST UI ============
+function QuestAchievementPopup({ open, onClose }: { open: boolean; onClose: () => void }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <button
+        type="button"
+        className="absolute inset-0 bg-[color:var(--bordo-deep)]/75 backdrop-blur-[2px]"
+        onClick={onClose}
+        aria-label="Zavrieť achievement"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="quest-achievement-title"
+        aria-describedby="quest-achievement-desc"
+        className="paper-card relative z-10 w-full max-w-sm rotate-1 p-8 text-center shadow-2xl"
+      >
+        <div className="tape tape-center" />
+        <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full border-2 border-dashed border-[color:var(--gold)] bg-[color:var(--gold)]/15">
+          <QuestLogTrophy className="h-7 w-7" />
+        </div>
+        <p className="font-marker text-xs uppercase tracking-[0.2em] text-[color:var(--turquoise)]">
+          Achievement
+        </p>
+        <h3 id="quest-achievement-title" className="mt-3 font-display text-3xl text-[color:var(--bordo)]">
+          Bude svatba!
+        </h3>
+        <p id="quest-achievement-desc" className="sr-only">
+          Quest log je kompletne splnený.
+        </p>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-6 inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-2.5 font-marker text-xs uppercase tracking-wide text-[color:var(--gold)] transition hover:bg-[color:var(--bordo-deep)]"
+        >
+          <Check className="h-4 w-4" aria-hidden />
+          Pokračovať
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function QuestLogTrophy({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <Trophy
+      className={`shrink-0 text-[color:var(--gold)] ${className}`}
+      aria-label="Achievement splnený"
+      fill="currentColor"
+      strokeWidth={1.75}
+    />
+  );
+}
+
 function ChecklistItem({
   s, done, active, onPick, onToggleCheck,
 }: {
@@ -1199,9 +1282,9 @@ function ChecklistItem({
 }
 
 function DesktopChecklist({
-  checked, active, onPick, onToggleCheck, progress,
+  checked, active, onPick, onToggleCheck, progress, questComplete,
 }: {
-  checked: Set<string>; active: string; progress: number;
+  checked: Set<string>; active: string; progress: number; questComplete: boolean;
   onPick: (id: string) => void;
   onToggleCheck: (id: string) => void;
 }) {
@@ -1210,9 +1293,10 @@ function DesktopChecklist({
       <div className="paper-card notebook-lines relative h-full overflow-visible p-5 pt-8">
         <div className="tape" />
         <div className="flex h-full min-h-0 flex-col overflow-hidden">
-        <div className="mb-3 flex items-baseline justify-between border-b-2 border-dashed border-[color:var(--ink)]/20 pb-2">
+        <div className="mb-3 flex items-center gap-2 border-b-2 border-dashed border-[color:var(--ink)]/20 pb-2">
           <h2 className="font-marker text-xl text-[color:var(--bordo)]">Quest log</h2>
-          <span className="font-hand text-xl text-[color:var(--ink)]/70">{progress}%</span>
+          {questComplete && <QuestLogTrophy />}
+          <span className="ml-auto font-hand text-xl text-[color:var(--ink)]/70">{progress}%</span>
         </div>
         <div className="mb-3 h-2 overflow-hidden rounded-full bg-[color:var(--ink)]/10">
           <div className="h-full rounded-full bg-[color:var(--turquoise)] transition-all" style={{ width: `${progress}%` }} />
@@ -1317,10 +1401,10 @@ function StickmanControlHintsMobile() {
 }
 
 function MobileChecklist({
-  open, onToggle, checked, active, onPick, onToggleCheck, progress,
+  open, onToggle, checked, active, onPick, onToggleCheck, progress, questComplete,
 }: {
   open: boolean; onToggle: () => void;
-  checked: Set<string>; active: string; progress: number;
+  checked: Set<string>; active: string; progress: number; questComplete: boolean;
   onPick: (id: string) => void;
   onToggleCheck: (id: string) => void;
 }) {
@@ -1331,6 +1415,7 @@ function MobileChecklist({
         className="flex w-full items-center gap-3 border-b border-[color:var(--gold)]/30 bg-[color:var(--bordo-deep)]/95 px-4 py-2.5 backdrop-blur"
       >
         <span className="font-marker text-sm text-[color:var(--gold)]">Quest log</span>
+        {questComplete && <QuestLogTrophy className="h-3.5 w-3.5" />}
         <div className="flex-1 h-1.5 rounded-full bg-[color:var(--paper)]/15 overflow-hidden">
           <div className="h-full bg-[color:var(--turquoise)]" style={{ width: `${progress}%` }} />
         </div>
@@ -1517,8 +1602,8 @@ function HeroSection() {
           <HeroMobilePhoto />
           <div className="ticker-line my-6 max-w-xl" />
           <p className="max-w-xl text-lg text-[color:var(--paper)]/80 leading-relaxed">
-            Spúšťame našu najväčšiu co-op výzvu a chceme, aby ste boli pri tom!
-            Ulož si náš dátum, odčiarkaj si quest log a daj nám vedieť, či ťa zbadáme nielen spoza oltára, ale aj na tanečnom parkete.
+            Spúšťame našu najväčšiu co-op misiu a chceme, aby si bol/a pri tom!
+           Preskúmaj všetky jej levely - ulož si náš dátum, odčiarkaj si quest log a daj nám vedieť, či ťa zbadáme nielen spoza oltára, ale aj na tanečnom parkete.
             Poprosíme ťa tiež o potvrdenie rezervácie nami objednaného ubytovania, ak si neplánuješ hľadať alternatívu
             po vlastnej osi.
           </p>
@@ -1810,9 +1895,9 @@ function ProgramTrail() {
 function ProgramSection() {
   return (
     <Section id="program" level="Level 01" title="Program dňa">
-      <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-2xl">
-        Misia "10.10.2026" má viacero checkpointov. 
-        Tu je ich zoznam a mapa, aby ste neskončili side questom v zlej pivnici či v akejsi skrytej úrovni.
+      <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-[50.4rem] leading-relaxed">
+        Náš Wedding Quest s krycím menom "10.10.2026" má viacero levelov a tie zase svoje checkpointy. 
+        Tu je ich zoznam a mapa, aby ste neskončili pri vedľajšej misii v zlej pivnici či v skrytom leveli.
       </p>
       <ProgramTrail />
     </Section>
@@ -1822,7 +1907,7 @@ function ProgramSection() {
 // ============ LOKÁCIE ============
 function LokacieSection() {
   return (
-    <Section id="lokacie" level="Level 02" title="Checkpoint lokácie">
+    <Section id="lokacie" level="Level 02" title="Lokácie checkpointov">
       <div className="grid gap-6 md:grid-cols-3">
         {CONFIG.locations.map((l, i) => (
           <div key={l.name} className="paper-card p-5" style={{ transform: `rotate(${(i - 1) * 0.6}deg)` }}>
@@ -1970,7 +2055,7 @@ function RsvpSection() {
       setSent(true);
       try { window.localStorage.setItem(RSVP_SENT_KEY, "1"); } catch { /* noop */ }
       markSectionChecked("rsvp");
-      toast.success("Quest completed! RSVP odoslané ✨");
+      toast.success("Level dokončený! RSVP odoslané ✨");
     } else toast.error("Nepodarilo sa odoslať. Skús to znova alebo nám napíš.");
   }
 
@@ -2213,7 +2298,7 @@ function PokrmSection() {
   }
 
   return (
-    <Section id="pokrm" level="Level 05" title="Výber power-upu">
+    <Section id="pokrm" level="Level 05" title="Power-up pokrm">
       {guests.length === 0 ? (
         <div className="paper-card p-6 text-center">
           <p className="font-hand text-xl text-[color:var(--ink)]">
@@ -2225,10 +2310,13 @@ function PokrmSection() {
         </div>
       ) : sent ? (
         <div className="paper-card p-8 text-center">
-          <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[color:var(--turquoise)] text-[color:var(--bordo-deep)]">
-            <Check className="h-8 w-8" strokeWidth={3} />
+          <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-[color:var(--turquoise)] text-[color:var(--bordo-deep)]">
+            <Check className="h-10 w-10" strokeWidth={3} />
           </div>
-          <p className="mt-4 font-hand text-2xl text-[color:var(--bordo)]">Ďakujeme! Máme vaše voľby ✨</p>
+          <h3 className="mt-4 font-display text-3xl text-[color:var(--bordo)]">+8XP!</h3>
+          <p className="mt-2 font-hand text-xl text-[color:var(--ink)]">
+            Ďakujeme! Máme tvoj výber uložený ✨
+          </p>
           <button
             type="button"
             onClick={editPokrm}
@@ -2245,7 +2333,7 @@ function PokrmSection() {
             <div className="grid gap-5 md:grid-cols-[minmax(0,0.95fr)_min(50%,360px)] md:items-start">
               <div className="overflow-visible">
                 <p className="font-hand text-lg leading-snug text-[color:var(--ink)]/80">
-                  Aby ste si svadobnu hostinu vychutnali, zvoľte si čo vám je po chuti...
+                  Aby si si svadobnú hostinu vychutnal, zvoľ si čo ti je po chuti...
                 </p>
                 <ul className="mt-3.5 space-y-2.5 overflow-visible">
                   {CONFIG.meals.map((m) => (
@@ -2540,21 +2628,21 @@ function UbytovanieSection() {
         window.localStorage.setItem(UBYTOVANIE_DATA_KEY, JSON.stringify({ rooms, notes }));
       } catch { /* noop */ }
       markSectionChecked("ubytovanie");
-      toast.success("Save point uložený ✨");
+      toast.success("HUB zvolený ✨");
     } else toast.error("Skús to prosím znova.");
   }
 
   const dobryVediet = (
     <div className="rounded-lg border border-dashed border-[color:var(--ink)]/25 bg-white/35 p-5">
-      <p className="font-marker text-xs uppercase text-[color:var(--bordo)]">Dobré vedieť</p>
-      <ul className="mt-2 space-y-1.5 font-hand text-lg text-[color:var(--ink)]">
+      <p className="font-marker text-[0.96rem] uppercase text-[color:var(--bordo)]">Dobré vedieť</p>
+      <ul className="mt-3 space-y-2 font-hand text-[1.375rem] leading-snug text-[color:var(--ink)]">
         <li>· Check-in od 13:00, check-out do 12:00.</li>
         <li>· Raňajky sú v cene izby.</li>
         <li>· Parkovanie v hoteli je za príplatok <span className="price-muted">{CONFIG.extras.parking} Kč / noc</span>.</li>
         <li>· Úhrada za izbu je možná na recepcii pri check-ine (kartou i v hotovosti).</li>
         <li>
           · Predĺženie pobytu alebo akékoľvek iné požiadavky si môžeš dohodnúť priamo s hotelom:
-          <span className="mt-1 block pl-3 text-base">
+          <span className="mt-1 block pl-3 text-[1.24rem]">
             <a href={`tel:${CONFIG.hotel.phone.replace(/\s/g, "")}`} className="hover:text-[color:var(--bordo)]">{CONFIG.hotel.phone}</a>
             {"   •   "}
             <a href={`mailto:${CONFIG.hotel.email}`} className="hover:text-[color:var(--bordo)]">{CONFIG.hotel.email}</a>
@@ -2568,19 +2656,22 @@ function UbytovanieSection() {
   );
 
   return (
-    <Section id="ubytovanie" level="Level 04" title="Hotel a la čik-čik domček">
-      <p className="max-w-3xl text-[color:var(--paper)]/85 leading-relaxed mb-6">
+    <Section id="ubytovanie" level="Level 04" title="Hotel ala čik-čik domček">
+      <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-[50.4rem] leading-relaxed">
         Pre hostí máme predbežne dohodnuté ubytovanie v Hoteli Continental na noc
-        <strong> zo soboty 10.10.2026 na nedeľu 11.10.2026</strong>. Poprosíme ťa o potvrdenie
+        <span className="font-normal text-[color:var(--paper)]"> zo soboty 10.10.2026 na nedeľu 11.10.2026</span>. Poprosíme ťa o potvrdenie
         rezervácie pre všetky osoby, za ktoré rezerváciu vypĺňaš. Ak ťa náš výber neoslovil, môžeš si nájsť ubytovanie po vlastnej osi.
       </p>
 
       {sent ? (
         <div className="paper-card p-8 text-center">
-          <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-[color:var(--turquoise)] text-[color:var(--bordo-deep)]">
-            <Check className="h-8 w-8" strokeWidth={3} />
+          <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-[color:var(--turquoise)] text-[color:var(--bordo-deep)]">
+            <Check className="h-10 w-10" strokeWidth={3} />
           </div>
-          <p className="mt-4 font-hand text-2xl text-[color:var(--bordo)]">Ďakujeme, ozveme sa s potvrdením ✨</p>
+          <h3 className="mt-4 font-display text-3xl text-[color:var(--bordo)]">+8XP!</h3>
+          <p className="mt-2 font-hand text-xl text-[color:var(--ink)]">
+            Ďakujeme, ozveme sa s potvrdením ✨
+          </p>
           <button
             type="button"
             onClick={editUbytovanie}
@@ -2617,12 +2708,12 @@ function UbytovanieSection() {
                 </div>
 
                 <div>
-                  <label className="form-label text-sm">Typ izby</label>
+                  <label className="form-label text-base">Typ izby</label>
                   <div className="mt-2 grid gap-2 sm:grid-cols-3">
                     {CONFIG.rooms.map((rt) => (
                       <label
                         key={rt.key}
-                        className={`cursor-pointer rounded-lg border-2 p-3 text-left transition ${
+                        className={`cursor-pointer rounded-lg border-2 p-3.5 text-left transition ${
                           r.typeKey === rt.key
                             ? "border-[color:var(--bordo)] bg-[color:var(--gold)]/20"
                             : "border-dashed border-[color:var(--ink)]/30 hover:border-[color:var(--bordo)]"
@@ -2634,15 +2725,15 @@ function UbytovanieSection() {
                           onChange={() => updateRoom(r.id, { typeKey: rt.key })}
                           className="sr-only"
                         />
-                        <div className="font-hand text-sm leading-tight text-[color:var(--ink)]">
+                        <div className="font-hand text-lg leading-tight text-[color:var(--ink)]">
                           <span className="whitespace-nowrap">
                             {rt.label}
                             {"sublabel" in rt && rt.sublabel ? (
-                              <span className="text-[0.85rem] font-normal text-[color:var(--ink)]/50"> ({rt.sublabel})</span>
+                              <span className="text-sm font-normal text-[color:var(--ink)]/50"> ({rt.sublabel})</span>
                             ) : null}
                           </span>
                         </div>
-                        <div className="price-muted mt-0.5">{rt.price.toLocaleString("sk-SK")} Kč / noc</div>
+                        <div className="price-muted mt-0.5 text-base">{rt.price.toLocaleString("sk-SK")} Kč / noc</div>
                       </label>
                     ))}
                   </div>
@@ -2685,11 +2776,14 @@ function UbytovanieSection() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <div>
-                    <label className="form-label text-sm block">
-                      Detská postieľka
-                      <span className="price-muted ml-4 font-body font-normal normal-case">zdarma  (do 3r.)</span>
+                <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-3">
+                  <div className="min-w-0">
+                    <label className="form-label block text-[0.7rem] leading-tight sm:text-xs">
+                      <span className="flex min-w-0 items-baseline gap-0.5 whitespace-nowrap">
+                        <span className="shrink-0">Detská postieľka</span>
+                        <span className="shrink-0 font-normal normal-case text-[color:var(--ink)]/55">(do 3r.)</span>
+                        <span className="price-muted shrink-0 font-body font-normal normal-case">zadarmo</span>
+                      </span>
                     </label>
                     <input
                       type="number" min={0} value={r.cots}
@@ -2697,10 +2791,12 @@ function UbytovanieSection() {
                       className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)]"
                     />
                   </div>
-                  <div>
-                    <label className="form-label text-sm block">
-                      Prístelka
-                      <span className="price-muted ml-4 font-body font-normal normal-case">{CONFIG.extras.extraBed} Kč / ks</span>
+                  <div className="min-w-0">
+                    <label className="form-label block text-xs leading-tight">
+                      <span className="flex min-w-0 items-baseline gap-1 whitespace-nowrap">
+                        <span className="shrink-0">Prístelka</span>
+                        <span className="price-muted min-w-0 truncate font-body font-normal normal-case">{CONFIG.extras.extraBed} Kč / ks</span>
+                      </span>
                     </label>
                     <input
                       type="number" min={0} value={r.extraBeds}
@@ -2708,10 +2804,12 @@ function UbytovanieSection() {
                       className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)]"
                     />
                   </div>
-                  <div>
-                    <label className="form-label text-sm block">
-                      Havo na izbe
-                      <span className="price-muted ml-4 font-body font-normal normal-case">{CONFIG.extras.pet} Kč / noc</span>
+                  <div className="min-w-0">
+                    <label className="form-label block text-xs leading-tight">
+                      <span className="flex min-w-0 items-baseline gap-1 whitespace-nowrap">
+                        <span className="shrink-0">Havo na izbe</span>
+                        <span className="price-muted min-w-0 truncate font-body font-normal normal-case">{CONFIG.extras.pet} Kč / noc</span>
+                      </span>
                     </label>
                     <label className="mt-1 flex cursor-pointer items-center gap-3 rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)]">
                       <input
@@ -2754,7 +2852,7 @@ function UbytovanieSection() {
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
-              placeholder="Máš na srdci niečo, čo sa nedalo vyklikať? Už o vás hotel vie?"
+              placeholder="Už o tebe hotel vie? Chýba ti nejaké vybavenie? Máš na srdci niečo, čo sa nedalo vyklikať?"
               className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)] placeholder:text-[color:var(--ink)]/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
             />
           </div>
@@ -2818,10 +2916,10 @@ function TetrominoSwatch({ color, cells }: { color: string; cells: readonly Tetr
 
 function DresscodeSection() {
   return (
-    <Section id="dresscode" level="Level 06" title="Dresscode (skin pack)">
-      <p className="max-w-3xl text-[color:var(--paper)]/85 leading-relaxed mb-8">
-        Dresscode sa nesie v hesle „elegantne ale hravo“. Budeme radi, keď prídete slávnostne, ale najmä pohodlne a tak, aby ste sa cítili dobre.
-        Farby a štýl nech pokojne ladia s jesennou, hravou náladou.
+    <Section id="dresscode" level="Level 06" title="Dresscode a.k.a. skin pack">
+      <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-[50.4rem] leading-relaxed">
+      Definovaný heslom „elegantne ale hravo“. Očakávame, že prídeš nahodený/á slávnostne, ale najmä pohodlne na celý deň slávenia.
+      Farby a štýl môžu pokojne ladit s jesennou, pestrofarebnou paletou, no môžeš sa inšpirovať aj tu:
       </p>
       <div className="mb-6 grid w-full max-w-2xl grid-cols-6 gap-2 sm:gap-2.5">
         {DRESSCODE_PALETTE.map((piece, i) => (
@@ -2842,8 +2940,8 @@ function DresscodeSection() {
           <ul className="space-y-2 font-hand text-lg text-[color:var(--ink)]">
             <li>· Slávnostne elegantné oblečenie</li>
             <li>· Pohodlné topánky na pretancovanú noc</li>
-            <li>· Jednofarebné jesenné / hravé tóny schvaľujeme</li>
-            <li>· Diamanty a zlaté reťaze</li>
+            <li>· Jednofarebné jesenné / hravé tóny podporujeme</li>
+            <li>· Diamantová zbroj, zlaté bloky a železné krompáče</li>
           </ul>
         </div>
         <div className="paper-card p-6">
@@ -2853,7 +2951,7 @@ function DresscodeSection() {
           </h3>
           <ul className="space-y-2 font-hand text-lg text-[color:var(--ink)]">
             <li>· Biele šaty (ak nie si nevesta)</li>
-            <li>· Tepláky, kraťasy či kapsáče</li>
+            <li>· Tepláky, kraťasy či rozgajdané kapsáče</li>
             <li>· Obuv, v ktorej nevydržíš tancovať alebo sa veľmo spotíš</li>
             <li>· Cosplay draka len po schválení novomanželmi</li>
           </ul>
@@ -2866,27 +2964,27 @@ function DresscodeSection() {
 // ============ DARY ============
 function DarySection() {
   return (
-    <Section id="dary" level="Level 07" title="Kvety & loot">
+    <Section id="dary" level="Level 07" title="Loot & kvety">
       <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
         <div className="paper-card p-6 md:p-8">
           <p className="font-hand text-2xl text-[color:var(--bordo)] mb-4">
-            Najväčším darom je pre nás to, že prídete osláviť náš deň s nami.
+            Najväčším darom bude pre nás to, že prídete osláviť náš deň s nami.
           </p>
           <p className="text-[color:var(--ink)]/80 leading-relaxed">
-            Ak by ste nás predsa len chceli niečím potešiť, viac než vecné dary oceníme
+            Ak by ste nás aj tak chceli niečím potešiť, viac než vecné dary oceníme
             finančný príspevok na spoločný štart do manželstva.
           </p>
           <div className="mt-6 rounded-lg border-2 border-dashed border-[color:var(--blush)] p-4">
             <p className="font-marker text-sm uppercase text-[color:var(--bordo)]">💐 Kytice</p>
             <p className="mt-1 font-hand text-lg text-[color:var(--ink)]">
-              Aby kytice neskončili smutne v kúte, budeme radi, ak ušetríte svoje peňaženky a priestory našej garzónky a dohodneme sa maximálne na jednom kvietku na osobu.
+              Aby neskončila orezaná flórasmutne v kúte, budeme radi, ak ušetríte svoje peňaženky a vzácne metre štvorcové našej garzónky a dohodneme sa na maximálne jednom kvietku na osobu.
             </p>
           </div>
         </div>
         <div className="paper-card p-5 rotate-1">
-          <p className="font-marker text-xs uppercase text-[color:var(--bordo)]">Voliteľný fast travel pre dar</p>
+          <p className="font-marker text-xs uppercase text-[color:var(--bordo)]">Dobrovoľný fast travel pre váš dar</p>
           <p className="mt-1 font-hand text-lg text-[color:var(--ink)]/80">
-            Pre tých, ktorí majú radšej rýchly checkout než obálkový inventory.
+            Pre tých, ktorí majú radšej rýchly checkout než obálky v inventári.
           </p>
           <div className="mt-11 grid place-items-center">
             <div className="h-48 w-48 overflow-hidden rounded-md">
@@ -2903,15 +3001,21 @@ function DarySection() {
 // ============ DEŇ ============
 function DenSection() {
   return (
-    <Section id="den" level="Level 08" title="Quest XP">
+    <Section id="den" level="Level 08" title="Lov na XP">
       <div className="paper-card p-6 md:p-10 relative overflow-hidden">
         <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full bg-[color:var(--turquoise)]/30 blur-2xl" />
         <div className="absolute -left-8 -bottom-8 h-40 w-40 rounded-full bg-[color:var(--blush)]/30 blur-2xl" />
         <div className="relative grid gap-6 md:grid-cols-3">
           {[
-            { icon: "🎶", title: "Tanči", txt: "Playlist bude legendárny. Berieme rezervácie do dozvukov." },
-            { icon: "🥂", title: "Jedz & pi", txt: "Kumst rozumie chuti aj mierke. Užite si to." },
-            { icon: "❤️", title: "Buď pri tom", txt: "Najlepšie sekcie sa nedajú preskočiť. Buď tu s nami." },
+            { icon: "🎶", title: "Vykrúcaj sa", txt: "Playlist je legendárny, nech nás posadne démonom tanca spolu!" },
+            { icon: "🥂", title: "Jedz & pi", txt: "Koľko žalúdok zvládne a hrdlo ráči. Samo sa to predsa neminie!" },
+            { icon: "💬", title: "Pokecaj si", txt: "Spoznaj svoj stôl, presúvaj sa k ďalším až kým pusa nebolí!" },
+            { icon: "📸", title: "Vyplň foto BINGO", txt: "9 fotiek, každá s unikátnym zadaním." },
+            { icon: "🎲", title: "Zahraj si stolovku", txt: "Stôl s hrami prekypuje, zavolaj nás na hru!" },
+            { icon: "📝", title: "Zapoj sa do kvízu", txt: "Koho poznáš lepšie a poznajú sa vôbec oni??" },
+            { icon: "🎀", title: "Vypleť svadobnú kyticu", txt: "Že vraj alternatíva ku hádzaniu, tak uvidíme." },
+            { icon: "📰", title: "Skúmaj svadobné noviny", txt: "Kto, s kým, kedy a kde vlastne sedíš?!" },
+
           ].map((c) => (
             <div key={c.title} className="rounded-lg border-2 border-dashed border-[color:var(--gold)]/50 p-5 text-center">
               <div className="text-4xl">{c.icon}</div>
@@ -2932,11 +3036,11 @@ function FotkySection() {
       <div className="grid gap-6 md:grid-cols-2">
         <div className="paper-card p-6">
           <p className="font-hand text-2xl text-[color:var(--bordo)]">
-            Vidíš moment, ktorý by nemal zmiznúť v galérii telefónu?
+            Zachytil si moment či screenshot, ktorý by nemal zapadnút v galérii telefónu?
           </p>
           <p className="mt-2 text-[color:var(--ink)]/80 leading-relaxed">
-            Nahraj ho k nám. Zbierame všetky fotky a videá na jedno miesto,
-            aby sme si mohli poskladať kompletný recap dňa.
+            Nahraj ho sem! Tvoríme centralizovanú kolekciu legendárnych fotiek a videií,
+            aby sme si mohli kompletne vyskladať náš deň.
           </p>
           <a
             href={CONFIG.photoUploadUrl}
@@ -2944,7 +3048,7 @@ function FotkySection() {
             rel="noreferrer"
             className="mt-5 inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]"
           >
-            <Camera className="h-4 w-4" /> Nahrať fotky
+            <Camera className="h-4 w-4" /> Nahraj fotky
           </a>
         </div>
         <div className="paper-card p-6 text-center">
@@ -2962,19 +3066,32 @@ function FotkySection() {
 
 // ============ BRNO ============
 const BRNO_TIPS = [
-  { title: "Špilberk & panorama", desc: "Hrad s výhľadom na mesto — ideálny side quest na nedeľné popoludnie." },
-  { title: "Katedrála sv. Petra a Pavla", desc: "Ikona Brna na Petrove. Krátka prechádzka z centra." },
-  { title: "Villa Tugendhat", desc: "UNESCO moderna. Odporúčame rezerváciu vopred, ak máš čas navyše." },
-  { title: "Kafé & pivné labyrinty", desc: "Brno má skvelé kaviarne aj pivárne — ideálne na pomalé doobedie po svadbe." },
-  { title: "Zelný trh & okolie", desc: "Historické jadro, socha krokodíla a desiatky zákutí na fotky." },
-  { title: "Technické múzeum", desc: "Ak máš rad/a históriu a techniku — silný tip na predĺžený pobyt." },
+  { title: "Brnenský drak", desc: "Zdobí starú radnicu a možno ti o ňom dačo prezradia aj mladomanželia..." },
+  { title: "Pevnosť Špilberk", desc: "Hrad týčiaci sa nad mestom je ideálnym nedeľným side questom." },
+  { title: "Katedrála sv. Petra a Pavla", desc: "Čas na odpustky po prehýrenej noci..." },
+  { title: "Villa Tugendhat", desc: "Bez rezervácie hrozia iba záhrady tejto architektonickej ikony, ale ani to nie je zlé!" },
+  { title: "Kostnica u sv. Jakuba", desc: "Sv. Jakub skrýva v hlbinách tajomstvá, ktoré vás donútia vrátiť sa aj po obrade..." },
+  { title: "Brnenský orloj", desc: "Veľký, dlhý a čierny skvost námestia Slobody." },
+  { title: "Socha markraběte Jošta Lucemburského", desc: "Čo sa tak všetci chichocú pod tou sochou...?" },
+  { title: "Conditio humana - Sv. Kryštof", desc: "Ďalší, tentoraz však menší a rozkošný!" },
+  { title: "VIDA! science centrum", desc: "Ideálny program s deťmi aj pre deti vo vás!" },
+  { title: "Vodojemy Žlutý Kopec", desc: "Čerstvo rekonštruované, atmosférické a prekvapivo bez vody." },
+  { title: "Pražák palác - Moravská galéria", desc: "Šmykľavka uprostred galérie súčasného umenia?! Okamžite idem!" },
+  { title: "Famózna prežieračka", desc: "ZAZA; 3F Sushi; Ramen Brno; Špageta; Padagali; Bango Brno" },
+  { title: "Cukrom nešetria", desc: "Ještě jednu; Dezertína; William Thomas; Profík & Trolík; Cukrářství Martinák" },
+  { title: "Kávoholici ocenia", desc: "qb scuk; Café Robot; Kimono Coffee; Kytkafe; Vážkafé; " },
+  { title: "Pivné bruško podporia", desc: "U Tekutého Chleba; U Tomana; Pivní Palác; Na Stojáka; Pivovar HARRY; Lokál U Caipla" },
+  { title: "Zelný trh a labyrint", desc: "Doobeda sprechádzka po trhovisku so zeleninou a ovocím, poobede podzemie!" },
+  { title: "Pivovar Starobrno", desc: "Odporúčame zarezervovať si prehliadku s ochutnávkou nefiltra na konci!" },
+  { title: "Park Lužánky", desc: "Park blízko centra, ideálny na rannú jógu, oddych na deke a kus zelene v meste." },
+
 ];
 
 function BrnoSection() {
   return (
-    <Section id="brno" level="Level 09" title="DLC: Brno">
-      <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-2xl">
-        Ak si plánuješ návštevu v Brne predĺžiť, mesto má veru čo ponúknuť, tu je pár tipov na preskúmanie...
+    <Section id="brno" level="Level 09" title="Brno DLC">
+      <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-[60.4rem] leading-relaxed">
+        Plánuješ si návštevu Brna predĺžiť? Mesto má rozhodne čo ponúknuť! Skús na mape objaviť napríklad:
       </p>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {BRNO_TIPS.map((tip, i) => (
@@ -3112,8 +3229,8 @@ function KontaktSection() {
       <h2 className="font-display text-4xl md:text-5xl lg:text-6xl text-[color:var(--paper)] mb-8">
         Kontakt
       </h2>
-      <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-2xl">
-        Ak si sa stratil/a v queste, ozvi sa nám. Alebo niekomu z party, kto vyzerá, že vie, čo robí.
+      <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-[50.4rem] leading-relaxed">
+        Stratil/a si sa v komplexnosti questu? Ozvi sa nám, alebo niekomu, kto vyzerá, že vie, čo robí...
       </p>
       <div className="grid gap-6 md:grid-cols-2">
         {[
