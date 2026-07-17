@@ -46,6 +46,7 @@ const CONFIG = {
     rsvp: viteEnv("VITE_FORMSPREE_RSVP"),
     pokrm: viteEnv("VITE_FORMSPREE_POKRM"),
     ubytovanie: viteEnv("VITE_FORMSPREE_UBYTOVANIE"),
+    poznamka: viteEnv("VITE_FORMSPREE_POZNAMKA", viteEnv("VITE_FORMSPREE_KONTAKT")),
   },
   contacts: {
     natalia: { phone: "+421 950 323 833", email: "nataalia.schultz@gmail.com" },
@@ -140,6 +141,8 @@ const POKRM_SENT_KEY = "no-wedding-pokrm-sent-v1";
 const POKRM_DATA_KEY = "no-wedding-pokrm-data-v1";
 const UBYTOVANIE_SENT_KEY = "no-wedding-ubytovanie-sent-v1";
 const UBYTOVANIE_DATA_KEY = "no-wedding-ubytovanie-data-v1";
+const KONTAKT_SENT_KEY = "no-wedding-kontakt-sent-v1";
+const KONTAKT_DATA_KEY = "no-wedding-kontakt-data-v1";
 
 function readGuests(): Guest[] {
   if (typeof window === "undefined") return [];
@@ -155,6 +158,14 @@ function writeGuests(list: Guest[]) {
   window.localStorage.setItem(GUEST_KEY, JSON.stringify(list));
   window.dispatchEvent(new CustomEvent("guests-updated"));
 }
+
+/** Hlavná osoba z RSVP (id „main“), prípadne prvý hosť. */
+function getMainRsvpName(): string {
+  const guests = readGuests();
+  const main = guests.find((g) => g.id === "main") ?? guests[0];
+  return main?.name?.trim() || "";
+}
+
 function useGuests(): Guest[] {
   const [guests, setGuests] = useState<Guest[]>([]);
   useEffect(() => {
@@ -183,7 +194,8 @@ const SECTIONS = [
   { id: "den", label: "Uži si náš deň", icon: Music },
   { id: "brno", label: "Objav Brno", icon: MapPin },
   { id: "fotky", label: "Zdieľaj s nami fotky", icon: Camera },
-  { id: "faq", label: "Otázky?!", icon: HelpCircle },
+  { id: "faq", label: "Dopýtaj sa", icon: HelpCircle },
+  { id: "kontakt", label: "Posledné veci", icon: Phone },
 ];
 const CHECK_KEY = "no-wedding-checked-v1";
 const ACHIEVEMENT_KEY = "no-wedding-quest-achievement-v1";
@@ -225,13 +237,11 @@ function getScrollOffset() {
 const CHECKLIST_IDS = new Set(SECTIONS.map((s) => s.id));
 
 /** Sekcie bez vlastnej položky v quest logu → checklist id */
-const SECTION_TO_CHECKLIST: Record<string, string> = {
-  kontakt: "faq",
-};
+const SECTION_TO_CHECKLIST: Record<string, string> = {};
 
 function sectionToChecklist(sectionId: string): string {
   const id = SECTION_TO_CHECKLIST[sectionId] ?? sectionId;
-  return CHECKLIST_IDS.has(id) ? id : "faq";
+  return CHECKLIST_IDS.has(id) ? id : "kontakt";
 }
 
 function checklistToSection(checklistId: string): string {
@@ -532,6 +542,7 @@ function WeddingSite() {
       if (window.localStorage.getItem(RSVP_SENT_KEY) === "1") markSectionChecked("rsvp");
       if (window.localStorage.getItem(POKRM_SENT_KEY) === "1") markSectionChecked("pokrm");
       if (window.localStorage.getItem(UBYTOVANIE_SENT_KEY) === "1") markSectionChecked("ubytovanie");
+      if (window.localStorage.getItem(KONTAKT_SENT_KEY) === "1") markSectionChecked("kontakt");
     } catch { /* noop */ }
     window.addEventListener("wedding-check-update", sync);
     return () => window.removeEventListener("wedding-check-update", sync);
@@ -853,6 +864,16 @@ function WeddingSite() {
     });
   };
 
+  const clearChecklistProgress = () => {
+    if (checked.size === 0) return;
+    setChecked(new Set());
+    setAchievementOpen(false);
+    try {
+      window.localStorage.setItem(CHECK_KEY, JSON.stringify([]));
+      window.localStorage.removeItem(ACHIEVEMENT_KEY);
+    } catch { /* noop */ }
+  };
+
   const progress = Math.round((checked.size / SECTIONS.length) * 100);
   const questComplete = isQuestLogComplete(checked);
 
@@ -912,6 +933,7 @@ function WeddingSite() {
         active={active}
         onPick={scrollTo}
         onToggleCheck={toggleCheck}
+        onClearProgress={clearChecklistProgress}
         progress={progress}
         questComplete={questComplete}
       />
@@ -1282,11 +1304,12 @@ function ChecklistItem({
 }
 
 function DesktopChecklist({
-  checked, active, onPick, onToggleCheck, progress, questComplete,
+  checked, active, onPick, onToggleCheck, onClearProgress, progress, questComplete,
 }: {
   checked: Set<string>; active: string; progress: number; questComplete: boolean;
   onPick: (id: string) => void;
   onToggleCheck: (id: string) => void;
+  onClearProgress: () => void;
 }) {
   return (
     <aside className="fixed right-6 top-6 bottom-6 z-30 hidden w-[320px] overflow-visible lg:block">
@@ -1311,7 +1334,20 @@ function DesktopChecklist({
             />
           ))}
         </div>
-        <StickmanControlHintsDesktop />
+        <div className="relative mt-auto shrink-0">
+          <StickmanControlHintsDesktop />
+          {checked.size > 0 && (
+            <button
+              type="button"
+              onClick={onClearProgress}
+              className="absolute -bottom-0.5 right-0 z-10 rounded p-0.5 text-[color:var(--ink)]/25 transition hover:text-[color:var(--ink)]/55"
+              title="Vymazať odčiarknuté položky"
+              aria-label="Vymazať odčiarknuté položky"
+            >
+              <Trash2 className="h-3 w-3" strokeWidth={1.75} />
+            </button>
+          )}
+        </div>
         </div>
       </div>
     </aside>
@@ -1969,14 +2005,20 @@ async function submitForm(formName: string, data: Record<string, unknown>) {
     console.warn(`Formspree endpoint pre „${formName}“ nie je nastavený (VITE_FORMSPREE_*).`);
     return { ok: false };
   }
+  const mainPerson =
+    (typeof data.mainPerson === "string" && data.mainPerson.trim()) ||
+    (typeof data.name === "string" && data.name.trim()) ||
+    getMainRsvpName();
+  const subjectSuffix = mainPerson ? ` · ${mainPerson}` : "";
   try {
     const res = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
-        _subject: `Svadba · ${formName}`,
+        _subject: `Svadba · ${formName}${subjectSuffix}`,
         _form: formName,
         ...data,
+        mainPerson: mainPerson || undefined,
       }),
     });
     if (!res.ok) {
@@ -2458,7 +2500,6 @@ function createDefaultRoom(): RoomEntry {
 function UbytovanieSection() {
   const guests = useGuests().filter((g) => g.attending);
   const [rooms, setRooms] = useState<RoomEntry[]>([]);
-  const [notes, setNotes] = useState("");
   const [sent, setSent] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
   const guestClickRef = useRef<{
@@ -2473,9 +2514,8 @@ function UbytovanieSection() {
       if (window.localStorage.getItem(UBYTOVANIE_SENT_KEY) === "1") setSent(true);
       const raw = window.localStorage.getItem(UBYTOVANIE_DATA_KEY);
       if (raw) {
-        const data = JSON.parse(raw) as { rooms?: RoomEntry[]; notes?: string };
+        const data = JSON.parse(raw) as { rooms?: RoomEntry[] };
         if (Array.isArray(data.rooms) && data.rooms.length > 0) setRooms(data.rooms);
-        if (typeof data.notes === "string") setNotes(data.notes);
       }
     } catch { /* noop */ }
     setDataLoaded(true);
@@ -2620,12 +2660,12 @@ function UbytovanieSection() {
       cots: r.cots, extraBeds: r.extraBeds, pet: r.pet,
       price: roomPrice(r),
     }));
-    const r = await submitForm("ubytovanie", { rooms: payload, totalPrice: total, night: "10.10.2026 → 11.10.2026", notes, hp: fd.get("hp") });
+    const r = await submitForm("ubytovanie", { rooms: payload, totalPrice: total, night: "10.10.2026 → 11.10.2026", hp: fd.get("hp") });
     if (r.ok) {
       setSent(true);
       try {
         window.localStorage.setItem(UBYTOVANIE_SENT_KEY, "1");
-        window.localStorage.setItem(UBYTOVANIE_DATA_KEY, JSON.stringify({ rooms, notes }));
+        window.localStorage.setItem(UBYTOVANIE_DATA_KEY, JSON.stringify({ rooms }));
       } catch { /* noop */ }
       markSectionChecked("ubytovanie");
       toast.success("HUB zvolený ✨");
@@ -2846,17 +2886,6 @@ function UbytovanieSection() {
             </div>
           )}
 
-          <div>
-            <label className="form-label text-sm">Poznámky</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={3}
-              placeholder="Už o tebe hotel vie? Chýba ti nejaké vybavenie? Máš na srdci niečo, čo sa nedalo vyklikať?"
-              className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)] placeholder:text-[color:var(--ink)]/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
-            />
-          </div>
-
           {dobryVediet}
 
           <button type="submit" className="inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]">
@@ -3066,40 +3095,88 @@ function FotkySection() {
 
 // ============ BRNO ============
 const BRNO_TIPS = [
-  { title: "Brnenský drak", desc: "Zdobí starú radnicu a možno ti o ňom dačo prezradia aj mladomanželia..." },
-  { title: "Pevnosť Špilberk", desc: "Hrad týčiaci sa nad mestom je ideálnym nedeľným side questom." },
-  { title: "Katedrála sv. Petra a Pavla", desc: "Čas na odpustky po prehýrenej noci..." },
-  { title: "Villa Tugendhat", desc: "Bez rezervácie hrozia iba záhrady tejto architektonickej ikony, ale ani to nie je zlé!" },
   { title: "Kostnica u sv. Jakuba", desc: "Sv. Jakub skrýva v hlbinách tajomstvá, ktoré vás donútia vrátiť sa aj po obrade..." },
   { title: "Brnenský orloj", desc: "Veľký, dlhý a čierny skvost námestia Slobody." },
   { title: "Socha markraběte Jošta Lucemburského", desc: "Čo sa tak všetci chichocú pod tou sochou...?" },
+  { title: "Zelný trh a labyrint", desc: "Doobeda sprechádzka po trhovisku so zeleninou a ovocím, poobede podzemie!" },
+  { title: "Brnenský drak", desc: "Zdobí starú radnicu a možno ti o ňom dačo prezradia aj mladomanželia..." },
+  { title: "Katedrála sv. Petra a Pavla", desc: "Čas na odpustky po prehýrenej noci..." },
   { title: "Conditio humana - Sv. Kryštof", desc: "Ďalší, tentoraz však menší a rozkošný!" },
+  { title: "Pevnosť Špilberk", desc: "Hrad týčiaci sa nad mestom je ideálnym nedeľným side questom." },
+  { title: "Pivovar Starobrno", desc: "Odporúčame zarezervovať si prehliadku s ochutnávkou nefiltra na konci!" },
+  { title: "Park Lužánky", desc: "Park blízko centra, ideálny na rannú jógu, oddych na deke a kus zelene v meste." },
+  { title: "Villa Tugendhat", desc: "Bez rezervácie hrozia iba záhrady tejto architektonickej ikony, ale ani to nie je zlé!" },
   { title: "VIDA! science centrum", desc: "Ideálny program s deťmi aj pre deti vo vás!" },
   { title: "Vodojemy Žlutý Kopec", desc: "Čerstvo rekonštruované, atmosférické a prekvapivo bez vody." },
-  { title: "Pražák palác - Moravská galéria", desc: "Šmykľavka uprostred galérie súčasného umenia?! Okamžite idem!" },
   { title: "Famózna prežieračka", desc: "ZAZA; 3F Sushi; Ramen Brno; Špageta; Padagali; Bango Brno" },
   { title: "Cukrom nešetria", desc: "Ještě jednu; Dezertína; William Thomas; Profík & Trolík; Cukrářství Martinák" },
   { title: "Kávoholici ocenia", desc: "qb scuk; Café Robot; Kimono Coffee; Kytkafe; Vážkafé; " },
   { title: "Pivné bruško podporia", desc: "U Tekutého Chleba; U Tomana; Pivní Palác; Na Stojáka; Pivovar HARRY; Lokál U Caipla" },
-  { title: "Zelný trh a labyrint", desc: "Doobeda sprechádzka po trhovisku so zeleninou a ovocím, poobede podzemie!" },
-  { title: "Pivovar Starobrno", desc: "Odporúčame zarezervovať si prehliadku s ochutnávkou nefiltra na konci!" },
-  { title: "Park Lužánky", desc: "Park blízko centra, ideálny na rannú jógu, oddych na deke a kus zelene v meste." },
 
 ];
 
+function BrnoTipCard({ tip, i }: { tip: (typeof BRNO_TIPS)[number]; i: number }) {
+  return (
+    <div className="paper-card p-5" style={{ transform: `rotate(${(i % 2 === 0 ? -1 : 1) * 0.5}deg)` }}>
+      <h3 className="font-display text-xl text-[color:var(--bordo)]">{tip.title}</h3>
+      <p className="mt-2 font-hand text-base leading-relaxed text-[color:var(--ink)]/80">{tip.desc}</p>
+    </div>
+  );
+}
+
+function BrnoTipGroup({
+  label,
+  tips,
+  tone = "blush",
+}: {
+  label: string;
+  tips: typeof BRNO_TIPS;
+  tone?: "blush" | "turquoise" | "dresscode-gold";
+}) {
+  const toneClass =
+    tone === "turquoise"
+      ? {
+          border: "border-[color:var(--turquoise)]/70",
+          badgeBorder: "border-[color:var(--turquoise)]/70",
+        }
+      : tone === "dresscode-gold"
+        ? {
+            border: "border-[#c8942c]/80",
+            badgeBorder: "border-[#c8942c]/80",
+          }
+        : {
+            border: "border-[color:var(--blush)]/70",
+            badgeBorder: "border-[color:var(--blush)]/70",
+          };
+
+  return (
+    <div className={`relative rounded-xl border-2 border-dashed bg-transparent ${toneClass.border} p-4 pt-7 sm:p-5 sm:pt-8`}>
+      <span className={`absolute right-4 top-0 -translate-y-1/2 rounded-full border border-dashed ${toneClass.badgeBorder} bg-[color:var(--bordo-deep)] px-3 py-0.5 font-marker text-xs uppercase tracking-widest text-[color:var(--gold)] sm:right-5`}>
+        {label}
+      </span>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {tips.map((tip, i) => (
+          <BrnoTipCard key={tip.title} tip={tip} i={i} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function BrnoSection() {
+  const centrumTips = BRNO_TIPS.slice(0, 6);
+  const okoloTips = BRNO_TIPS.slice(6, 13);
+  const gastroTips = BRNO_TIPS.slice(13);
+
   return (
     <Section id="brno" level="Level 09" title="Brno DLC">
       <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-[60.4rem] leading-relaxed">
         Plánuješ si návštevu Brna predĺžiť? Mesto má rozhodne čo ponúknuť! Skús na mape objaviť napríklad:
       </p>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {BRNO_TIPS.map((tip, i) => (
-          <div key={tip.title} className="paper-card p-5" style={{ transform: `rotate(${(i % 2 === 0 ? -1 : 1) * 0.5}deg)` }}>
-            <h3 className="font-display text-xl text-[color:var(--bordo)]">{tip.title}</h3>
-            <p className="mt-2 font-hand text-base leading-relaxed text-[color:var(--ink)]/80">{tip.desc}</p>
-          </div>
-        ))}
+      <div className="space-y-4">
+        <BrnoTipGroup label="Centrum" tips={centrumTips} />
+        <BrnoTipGroup label="Širšie centrum" tips={okoloTips} tone="turquoise" />
+        <BrnoTipGroup label="Gastro tipy" tips={gastroTips} tone="dresscode-gold" />
       </div>
     </Section>
   );
@@ -3107,39 +3184,30 @@ function BrnoSection() {
 
 // ============ FAQ ============
 const FAQ = [
-  { q: "Kedy máme prísť?", a: "Zraz je o 14:30 na recepcii hotela Continental. Obrad začína o 15:30 v Kostole sv. Jakuba — príďte s 15 min rezervou." },
-  { q: "Prečo rezervovať izbu v Hoteli Continental?", a: "Urobili sme prieskum pomeru cena–kvalita–vzdialenosť a Continental nám najviac sedí. Mimo tejto ponuky to neodporúčame — nechceme, aby ste skončili ďaleko alebo v horšom pomere ceny a komfortu." },
-  { q: "Môžem si nájsť ubytovanie inde?", a: "Áno, úplne v pohode. Ak nevyužiješ náš blok, daj nám len vedieť v RSVP alebo v poznámke, aby sme vedeli počítať s účasťou." },
-  { q: "Čo ak chcem predĺžiť pobyt?", a: "Odporúčame predĺžiť pobyt až po svadbe – pred termínom je Brno vybookované kvôli technickému veľtrhu. Predĺženie alebo iné požiadavky vybav priamo s hotelom. Pri komunikácii uveď heslo „Svadba Schultz“ a meno hlavnej osoby z rezervácie." },
-  { q: "Kde a kedy je zraz?", a: "Ak nie si ubytovaný/á v Continental, môžeš doraziť rovno na obrad o 15:30. Ak si v hoteli, zastav sa o 14:30 na recepcii — občerstvenie, zahriatie a zoznámenie sa s ostatnými." },
-  { q: "Kde je obrad?", a: "Kostol sv. Jakuba v Brne. Odkaz na Google Maps nájdeš v sekcii Lokácie." },
-  { q: "Kde zaparkovať?", a: "V Hoteli Continental je platené parkovanie (390 Kč / noc). V okolí Kumstu a kostola sú platené parkoviská." },
-  { q: "Ako funguje ubytovanie?", a: "Máme predbežnú rezerváciu v Hoteli Continental na noc 10. – 11.10. Detaily a formulár nájdeš v sekcii Ubytovanie." },
-  { q: "Už som si telefonicky rezervoval/a izbu na heslo Schultz — čo ďalej?", a: "Určite aj tak vyplň formulár v sekcii Ubytovanie — do poznámky napíš, že si už rezervoval/a telefonicky. Daj si pozor, aby si ako hlavnú osobu uviedol/a toho istého, na koho je izba vedená u hotela (heslo „Svadba Schultz“), inak vzniknú duplicity. Bez vyplneného formulára nemáme prehľad a usudzujeme, že si hľadáš ubytovanie po vlastnej osi." },
-  { q: "Čo s deťmi?", a: "Deti sú vítané, ale necháme v réžii každého, aby sa rozhodol tak, aby si dokázal deň užiť. Ak je to možné, odporúčame vybaviť stráženie. V RSVP ich pridaj ako ďalších hostí a v sekcii Pokrm im zaklikni detskú porciu." },
-  { q: "Čo s darom?", a: "Radi prijmeme finančný príspevok — obálka, QR platba alebo prevod. Detaily v sekcii Loot & kytice." },
-  { q: "Aký je dresscode?", a: "Slávnostne a pohodlne. Jesenné, bordové, zlaté tóny vítané. Viac v sekcii Dresscode." },
-  { q: "Kam nahrať fotky?", a: "Do našej spoločnej galérie cez tlačidlo alebo QR kód v sekcii Fotky." },
-  { q: "Na koho sa obrátiť?", a: "Napíš alebo zavolaj Natálii alebo Otovi — kontakty sú v poslednej sekcii." },
-  { q: "Môžem prísť sám/sama?", a: "Samozrejme! Ak nemáš +1, príď sám/sama — na tanečnom parkete sa určite nájde parťák." },
-  { q: "Čo ak mám alergiu alebo intoleranciu?", a: "Napíš nám to do poznámky v sekcii Pokrm alebo Ubytovanie, alebo nám zavolaj. Kuchyňu vopred upozorníme." },
-  { q: "Je dresscode záväzný?", a: "Nie striktne — ide skôr o náladu. Dôležité je, aby si sa cítil/a dobre a vydržal/a tancovať do 02:00." },
-  { q: "Kedy končí oslava?", a: "Oficiálny program končí okolo 02:00 dozvukmi. Kumst nás nechá tancovať, kým nám to nohy dovolia." },
-  { q: "Ako sa dostaneme z hostiny späť do hotela?", a: "Pre triezvejších a energickejších je to do 10 minút pešia prechádzka. Inak odporúčame využiť Bolt, Wolt alebo Uber na rýchly prevoz." },
-  { q: "Môžem prísť neskôr / odísť skôr?", a: "Áno, rozumieme. Daj nám len vedieť v RSVP alebo v poznámke, aby sme vedeli počítať s miestami pri stole." },
-  { q: "Bude vegetariánska / bezlepková voľba?", a: "Áno — v sekcii Pokrm si vyber z troch jedál vrátane vegetariánskej možnosti. Špeciálne diéty nám napíš v poznámke." },
-  { q: "Mám kde zaparkovať auto?", a: "Jasné. V hoteli Continental je za príplatok k dispozícii parkovisko, v ulicia Brna je tiež možné cez víkend parkovať v modrej zóne bezplatne. Počas pobytu odporúčame sa po meste pohybovať peši alebo verejnou dopravou." },
-  { q: "Čo ak prší?", a: "Obrad je v kostole, hostina v Kumste — oboje pod strechou. Dáždnik v inventári nechaj pre istotu, ale quest pokračuje za každého počasia." },
-  { q: "Môžem prísť s psíkom?", a: "Do kostola a na hostinu ho prosím neber. V krajnom prípade — ak nie je možné vybaviť stráženie — môže byť za príplatok v hoteli (500 Kč / noc), prípadne vo vedľajšej miestnosti v budove hostiny. Viac v sekcii Ubytovanie." },
-  { q: "Ako funguje QR platba na dar?", a: "V sekcii Loot & kytice nájdeš QR kód. Je to úplne voliteľné — obálka pri stole funguje tiež." },
-  { q: "Môžem doniesť kyticu?", a: "Budeme radi, ak uštríte vaše peňaženky i naše priestory a dohodneme sa maximálne na jednom kvietku na osobu. Dostatočnou ozdobou a darom bude i len vaša prítomnosť vyzbrojená dobrou náladou a úprimným úsmevom." },
-  { q: "Bude preklad / slovenčina v kostole?", a: "Obrad bude v češtine, ale program a pokyny máme v slovenčine. Ak niečo nepochopíš, kľakni na NPC poradcu alebo nás zavolaj." },
-  { q: "Kde sa môžem prezliecť pred oslavou?", a: "Check-in v hoteli je od 13:00 — izbu dostaneš včas, aby si sa stihol/a pripraviť pred zrazom o 14:30." },
+  { q: "Čo ak bude pršať?", a: "Obrad je v kostole, hostina v budove KUMSTu — oboje teda pod strechou. Dáždnik si pre istotu nechaj v inventári, ale náš quest pokračuje za každého počasia!" },
+  { q: "V akom jazyku bude obrad?", a: "Celý obrad aj omša budú po slovensky až na kázeň, ktorá bude v češtine." },
+  { q: "Mám kde zaparkovať auto?", a: "Jasné! V hoteli Continental je za príplatok - 390 Kč/noc k dispozícii parkovisko a počas víkendu je v modrých zónach Brnenských ulíc možné parkovať bezplatne, no v najhoršom scenári sú blízko aj parkovacie domy. Počas pobytu odporúčame presúvať sa po meste peši alebo verejnou dopravou." },
+  { q: "Musím v Brne nocovať?", a: "Samozrejme nemusíš, ale budeme radi, ak nám o tom dáš vopred vedieť v developerskej poznámke, aby sme vedeli s kým kedy rátať." },
+  { q: "Čo ubytovanie?", a: "Máme predbežnú rezerváciu v Hoteli Continental na noc z 10.10. do 11.10. a detaily ňom spolu s formulárom nájdeš v leveli Hotel ala čik-čik domček.  Môžeš si vždy nájsť alternatívny nocľah po vlastnej osi - len nám to prosím daj vedieť dolu v poznámke." },
+  { q: "Prečo práve Hotel Continental?", a: "Na základe prieskumu pomerov cena–kvalita–vzdialenosť vyšiel Continental najlepšie. Neodporúčame/nechceme, aby ste skončili ďaleko alebo v horších podmienkach." },
+  { q: "Predlžujeme pobyt v hoteli, ako na to?", a: "Brno ťa privíta s otvorenou náručou, no nezabudni určite vyplniť aj formulár na nami rezervovanú noc! Odporúčame však predĺžovanie až na dni po svadbe – pred našim termínom je kvôli Medzinárodnému strojárenskému veľtrhu Brno vybookované. Predĺženie či akékoľvek iné požiadavky rieš priamo s hotelom a pri komunikácii uvádzaj heslo „Svadba Schultz“ a meno hlavnej osoby z rezervácie." },
+  { q: "Kde sa môžem prezliecť pred oslavou?", a: "Check-in v hoteli je od 13:00 — izbu dostaneš včas, aby si sa stihol/stihla pripraviť pred zrazom o 14:30." },
+  { q: "Môžem so sebou zavolať +1?", a: "Na každej pozvánke sú uvedené osoby, s ktorými na svadobnej hostine rátame a radi ich tam uvidíme." },
+  { q: "Môžem prísť sám/sama?", a: "Samozrejme! Ak nemáš +1, príď sám/sama — na obrade, počas hostiny alebo na tanečnom parkete si určite parťáka nájdeš." },
+  { q: "Čo s deťmi?", a: "Deti sú vítané, ale premýšľajte tak, aby ste si vedeli deň s nami čo najviac užiť. V RSVP každé dieťa pridaj ako ďalšieho hosťa a v leveli Power-up pokrm im zaklikni detskú porciu. Ak máš ale niekoho na stráženie, odporúčame takú možnosť využit." },
+  { q: "Kedy končí oslava?", a: "Oficiálny program končí odchodom DJ o 02:00 a pokračuje dozvukmi. KUMST nás (dúfajme) nechá tancovať dokiaľ nám to nohy dovolia, ae nie je zlý nápad sa pred odjazdom domov trochu aj vyspať." },
+  { q: "Ako sa dostaneme z KUMSTu naspäť do hotela?", a: "Pre menej unavených a mladších je to 10 minútová prechádzka. Ostatným odporúčame využiť taxi ako Bolt, Wolt alebo Uber na rýchly prevoz." },
+  { q: "Aký je dresscode a je záväzný?", a: "Nami navrhované farby od nikoho striktne nebudeme vyžadovať, ide skôr o náladu a dôležité bude cítiť sa dobre popčas celej tancovačky až do 02:00. Viac info v leveli Dresscode." },
+  { q: "Ako postupovať s darom?", a: "Radi prijmeme finančný príspevok na naše ďalšie kroky formou obálky, QR platby alebo prevodu. Detaily nájdete pod levelom Loot & kvety." },
+  { q: "Môžem prísť so psíkom?", a: "Do kostola a na hostinu ho prosím neber. Ak sa ti však v krajnom prípade nepodarí zohnať stráženie, môže byť za príplatok v hoteli - 500 Kč/noc, prípadne vo vedľajšej miestnosti v budove KUMSTu. Viac v leveli Hotel ala čik-čik domček." },
+  { q: "Čo ak mám alergiu alebo intoleranciu alebo som vegetarián/ka?", a: "Akékoľvek svoje špeciálne diéty, požiadavky či ďalšie adaptácie pokrmu nám napíš v poznámke a my kuchyňu vopred upozorníme." },
+  { q: "Na koho sa obrátiť?", a: "V núdzi napíš alebo zavolaj mladomanželom - Natálii či Otovi, ich kontakty sú v poslednom leveli." },
+  { q: "Chýba tu nejaká otázka?", a: "Napíš nám ju do sekcie poznámka pod našimi kontaktmi." },
 ];
 
 function FaqSection() {
   const [messages, setMessages] = useState<{ role: "bot" | "user"; text: string }[]>([
-    { role: "bot", text: "Ahoj, som svadobný NPC poradca 🧙 Vyber otázku nižšie alebo klikni na tému." },
+    { role: "bot", text: "Ja som mocný svadobný NPC poradca 🧙 Pýtaj sa, ak si trúfaš..." },
   ]);
 
   function ask(item: (typeof FAQ)[number]) {
@@ -3207,6 +3275,43 @@ function KontaktSection() {
   const stickman = useContext(StickmanContext);
   const meetClose = isStickmanMeetClose(stickman.sectionId, stickman.linePos);
   const meetHeartPos = (stickman.linePos + FOOTER_PARTNER_LINE_POS) / 2;
+  const [notes, setNotes] = useState("");
+  const [sent, setSent] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(KONTAKT_SENT_KEY) === "1") setSent(true);
+      const raw = window.localStorage.getItem(KONTAKT_DATA_KEY);
+      if (raw) {
+        const data = JSON.parse(raw) as { notes?: string };
+        if (typeof data.notes === "string") setNotes(data.notes);
+      }
+    } catch { /* noop */ }
+  }, []);
+
+  function editKontakt() {
+    setSent(false);
+    try { window.localStorage.removeItem(KONTAKT_SENT_KEY); } catch { /* noop */ }
+  }
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    if (!notes.trim()) {
+      toast.error("Napíš prosím poznámku.");
+      return;
+    }
+    const r = await submitForm("poznamka", { notes: notes.trim(), hp: fd.get("hp") });
+    if (r.ok) {
+      setSent(true);
+      try {
+        window.localStorage.setItem(KONTAKT_SENT_KEY, "1");
+        window.localStorage.setItem(KONTAKT_DATA_KEY, JSON.stringify({ notes: notes.trim() }));
+      } catch { /* noop */ }
+      markSectionChecked("kontakt");
+      toast.success("Poznámka odoslaná ✨");
+    } else toast.error("Skús to prosím znova.");
+  }
 
   return (
     <section
@@ -3227,7 +3332,7 @@ function KontaktSection() {
         </div>
       </div>
       <h2 className="font-display text-4xl md:text-5xl lg:text-6xl text-[color:var(--paper)] mb-8">
-        Kontakt
+        Odkaz developerom
       </h2>
       <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-[50.4rem] leading-relaxed">
         Stratil/a si sa v komplexnosti questu? Ozvi sa nám, alebo niekomu, kto vyzerá, že vie, čo robí...
@@ -3255,6 +3360,42 @@ function KontaktSection() {
           </div>
         ))}
       </div>
+
+      <form onSubmit={onSubmit} className="paper-card mt-6 p-6 md:p-8">
+        <input type="text" name="hp" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden />
+        {sent ? (
+          <div className="text-center">
+            <p className="font-hand text-xl text-[color:var(--bordo)]">Ďakujeme za tvoje slová, pokúsime sa ich nezapatrošiť...</p>
+            <button
+              type="button"
+              onClick={editKontakt}
+              className="mt-5 font-hand text-base text-[color:var(--ink)]/60 hover:text-[color:var(--bordo)]"
+            >
+              Zmeniť odpoveď
+            </button>
+          </div>
+        ) : (
+          <>
+            <div>
+              <label className="form-label text-sm">Poznámka</label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                placeholder="Máš otázku, tip alebo niečo, čo sa nám hodí vedieť? Sem s tým!"
+                className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)] placeholder:text-[color:var(--ink)]/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
+              />
+            </div>
+            <button
+              type="submit"
+              className="mt-4 inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]"
+            >
+              <Send className="h-4 w-4" /> Odoslať
+            </button>
+          </>
+        )}
+      </form>
+
       <div className="flex-1 min-h-[4rem]" />
       <footer id="quest-footer" className="mt-auto pb-6 text-center">
         <div id="quest-footer-line" className="relative mb-8 pt-[22px]">
