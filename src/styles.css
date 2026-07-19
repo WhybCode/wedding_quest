@@ -41,10 +41,13 @@
   --color-blush: var(--blush);
 
   --font-hand: "Caveat", cursive;
-  --font-marker: "Quicksand", system-ui, sans-serif;
-  --font-display: "Quicksand", system-ui, sans-serif;
+  --font-marker: "Poiret One", system-ui, sans-serif;
+  --font-display: "Poiret One", system-ui, sans-serif;
   --font-pixel: "Press Start 2P", cursive;
-  --font-body: "Quicksand", system-ui, sans-serif;
+  --font-body: "Poiret One", system-ui, sans-serif;
+  /* Poiret One má len weight 400 — jemné zhrubnutie + tracking */
+  --poiret-stroke: 0.45px;
+  --poiret-tracking: 0.015em;
 }
 
 :root {
@@ -86,6 +89,9 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-body);
+    -webkit-text-stroke: var(--poiret-stroke) currentColor;
+    paint-order: stroke fill;
+    letter-spacing: var(--poiret-tracking);
     background-image:
       radial-gradient(circle at 15% 10%, oklch(0.35 0.10 25 / 0.6), transparent 40%),
       radial-gradient(circle at 85% 80%, oklch(0.32 0.11 15 / 0.5), transparent 45%),
@@ -112,13 +118,23 @@
   input[type="radio"] {
     cursor: pointer;
   }
+  .font-hand,
+  .font-pixel {
+    -webkit-text-stroke: 0;
+    letter-spacing: normal;
+  }
   .font-marker {
     font-family: var(--font-marker);
     font-weight: 700;
-    letter-spacing: 0.02em;
+    letter-spacing: var(--poiret-tracking);
+    -webkit-text-stroke: 0.55px currentColor;
+    paint-order: stroke fill;
   }
   .font-display {
     font-family: var(--font-display);
+    letter-spacing: var(--poiret-tracking);
+    -webkit-text-stroke: 0.6px currentColor;
+    paint-order: stroke fill;
   }
   .font-pixel {
     font-family: var(--font-pixel);
@@ -135,7 +151,7 @@
 @utility form-label {
   font-family: var(--font-marker);
   font-weight: 700;
-  letter-spacing: 0.025em;
+  letter-spacing: var(--poiret-tracking);
   text-transform: uppercase;
   color: var(--bordo);
 }
