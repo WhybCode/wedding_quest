@@ -31,8 +31,8 @@ jobs:
         run: npm run build:pages
         env:
           GITHUB_PAGES_BASE: /wedding_quest/
-          # Voliteľné — ak secret chýba, build použije predvolený endpoint v kóde
-          VITE_FORMSPREE_ENDPOINT: ${{ secrets.VITE_FORMSPREE_ENDPOINT || 'https://formspree.io/f/mzdnpyza' }}
+          # Voliteľné — ak secret chýba, build použije predvolený Apps Script endpoint v kóde
+          VITE_FORMS_ENDPOINT: ${{ secrets.VITE_FORMS_ENDPOINT || 'https://script.google.com/macros/s/AKfycbzwHgw3HfWyvTnlA08n9fs2xSgz1E3qi8YcUnrXMbf7jovKgU-jHv41DvJKF6Wt-CM/exec' }}
 
       - uses: actions/upload-pages-artifact@v3
         with:

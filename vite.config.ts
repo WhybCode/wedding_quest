@@ -36,6 +36,23 @@ function photoManifestPlugin(): Plugin {
 const pagesBase = process.env.GITHUB_PAGES_BASE || "/";
 const routerBasepath = pagesBase === "/" ? undefined : pagesBase.replace(/\/$/, "");
 
+/** Dátum posledného gitu (YYYY-MM-DD → dd.MM.yyyy) pre footer „Last updated“. */
+function lastUpdatedLabel() {
+  try {
+    const iso = execSync("git log -1 --format=%cs", { encoding: "utf8" }).trim();
+    const [y, m, d] = iso.split("-");
+    if (y && m && d) return `${d}.${m}.${y}`;
+  } catch {
+    /* fallback nižšie */
+  }
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, "0");
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  return `${dd}.${mm}.${now.getFullYear()}`;
+}
+
+const LAST_UPDATED = process.env.VITE_LAST_UPDATED?.trim() || lastUpdatedLabel();
+
 export default defineConfig({
   nitro: false,
   tanstackStart: {
@@ -50,5 +67,8 @@ export default defineConfig({
   vite: {
     base: pagesBase,
     plugins: [photoManifestPlugin()],
+    define: {
+      "import.meta.env.VITE_LAST_UPDATED": JSON.stringify(LAST_UPDATED),
+    },
   },
 });

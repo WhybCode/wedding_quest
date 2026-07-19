@@ -23,7 +23,8 @@ import {
 
 export const Route = createFileRoute("/")({ component: WeddingSite });
 
-const FORMSPREE_DEFAULT = "https://formspree.io/f/mzdnpyza";
+const FORM_ENDPOINT_DEFAULT =
+  "https://script.google.com/macros/s/AKfycbzwHgw3HfWyvTnlA08n9fs2xSgz1E3qi8YcUnrXMbf7jovKgU-jHv41DvJKF6Wt-CM/exec";
 
 /** Vite env na CI môže byť prázdny reťazec (nastavený secret bez hodnoty) — ?? by nepoužilo fallback. */
 function viteEnv(name: string, fallback = "") {
@@ -40,13 +41,13 @@ const CONFIG = {
   dateISO: "2026-10-10T14:00:00+02:00",
   dateHuman: "10.10.2026",
   city: "Brno, Česká republika",
-  /** Formspree — https://formspree.io/f/mzdnpyza */
-  formEndpoint: viteEnv("VITE_FORMSPREE_ENDPOINT", FORMSPREE_DEFAULT),
+  /** Google Apps Script → Google Sheets (bez Formspree) */
+  formEndpoint: viteEnv("VITE_FORMS_ENDPOINT", FORM_ENDPOINT_DEFAULT),
   formEndpoints: {
-    rsvp: viteEnv("VITE_FORMSPREE_RSVP"),
-    pokrm: viteEnv("VITE_FORMSPREE_POKRM"),
-    ubytovanie: viteEnv("VITE_FORMSPREE_UBYTOVANIE"),
-    poznamka: viteEnv("VITE_FORMSPREE_POZNAMKA", viteEnv("VITE_FORMSPREE_KONTAKT")),
+    rsvp: viteEnv("VITE_FORMS_RSVP"),
+    pokrm: viteEnv("VITE_FORMS_POKRM"),
+    ubytovanie: viteEnv("VITE_FORMS_UBYTOVANIE"),
+    poznamka: viteEnv("VITE_FORMS_POZNAMKA"),
   },
   contacts: {
     natalia: { phone: "+421 950 323 833", email: "nataalia.schultz@gmail.com" },
@@ -890,7 +891,7 @@ function WeddingSite() {
   return (
     <div className="relative min-h-screen overflow-x-visible">
       <StickmanContext.Provider value={stickmanContextValue}>
-      <Toaster position="top-center" richColors />
+      <Toaster position="top-center" richColors visibleToasts={1} />
       <QuestAchievementPopup open={achievementOpen} onClose={() => setAchievementOpen(false)} />
       <CursorHearts />
       <PaperTexture />
@@ -1992,7 +1993,7 @@ function LokacieSection() {
   );
 }
 
-// ============ FORM UTILITIES (Formspree – funguje aj na statickom github.io) ============
+// ============ FORM UTILITIES (Google Apps Script → Sheets; funguje aj na github.io) ============
 function getFormEndpoint(formName: string) {
   const specific = CONFIG.formEndpoints[formName as keyof typeof CONFIG.formEndpoints];
   return specific || CONFIG.formEndpoint;
@@ -2002,7 +2003,7 @@ async function submitForm(formName: string, data: Record<string, unknown>) {
   if ((data as { hp?: string }).hp) return { ok: true };
   const endpoint = getFormEndpoint(formName);
   if (!endpoint || endpoint.includes("your-form-id") || endpoint.includes("your-endpoint")) {
-    console.warn(`Formspree endpoint pre „${formName}“ nie je nastavený (VITE_FORMSPREE_*).`);
+    console.warn(`Forms endpoint pre „${formName}“ nie je nastavený (VITE_FORMS_*).`);
     return { ok: false };
   }
   const mainPerson =
@@ -2010,24 +2011,41 @@ async function submitForm(formName: string, data: Record<string, unknown>) {
     (typeof data.name === "string" && data.name.trim()) ||
     getMainRsvpName();
   const subjectSuffix = mainPerson ? ` · ${mainPerson}` : "";
+  const payload = {
+    _subject: `Svadba · ${formName}${subjectSuffix}`,
+    _form: formName,
+    ...data,
+    mainPerson: mainPerson || undefined,
+  };
+
   try {
+    // text/plain = bez CORS preflightu; Apps Script web app často redirectuje
     const res = await fetch(endpoint, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({
-        _subject: `Svadba · ${formName}${subjectSuffix}`,
-        _form: formName,
-        ...data,
-        mainPerson: mainPerson || undefined,
-      }),
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload),
+      redirect: "follow",
     });
-    if (!res.ok) {
-      const err = await res.json().catch(() => null) as { error?: string } | null;
-      console.error("Formspree error:", err?.error ?? res.status);
+
+    // Po redirecte Apps Script môže vrátiť 200 s JSON alebo opaque/chybu CORS —
+    // ak sa podarí parsovať { ok: true/false }, rešpektujeme to; inak 2xx = úspech.
+    const text = await res.text().catch(() => "");
+    if (text) {
+      try {
+        const parsed = JSON.parse(text) as { ok?: boolean; error?: string };
+        if (typeof parsed.ok === "boolean") {
+          if (!parsed.ok) console.error("Forms error:", parsed.error ?? parsed);
+          return { ok: parsed.ok };
+        }
+      } catch { /* nie JSON — berieme HTTP status */ }
     }
-    return { ok: res.ok };
+    if (!res.ok) {
+      console.error("Forms HTTP error:", res.status, text.slice(0, 200));
+      return { ok: false };
+    }
+    return { ok: true };
   } catch (err) {
-    console.error("Formspree network error:", err);
+    console.error("Forms network error:", err);
     return { ok: false };
   }
 }
@@ -2074,8 +2092,9 @@ function RsvpSection() {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!name.trim()) { toast.error("Vyplň prosím meno."); return; }
-    if (!phone.trim()) { toast.error("Vyplň prosím telefón."); return; }
+    if (loading) return;
+    if (!name.trim()) { toast.error("Vyplň prosím meno.", { id: "rsvp" }); return; }
+    if (!phone.trim()) { toast.error("Vyplň prosím telefón.", { id: "rsvp" }); return; }
 
     const isAttending = attending === "yes";
     const list: Guest[] = [{ id: "main", name: name.trim(), attending: isAttending }];
@@ -2097,8 +2116,8 @@ function RsvpSection() {
       setSent(true);
       try { window.localStorage.setItem(RSVP_SENT_KEY, "1"); } catch { /* noop */ }
       markSectionChecked("rsvp");
-      toast.success("Level dokončený! RSVP odoslané ✨");
-    } else toast.error("Nepodarilo sa odoslať. Skús to znova alebo nám napíš.");
+      toast.success("Level dokončený! RSVP odoslané ✨", { id: "rsvp" });
+    } else toast.error("Nepodarilo sa odoslať. Skús to znova alebo nám napíš.", { id: "rsvp" });
   }
 
   if (sent) {
@@ -2298,6 +2317,7 @@ function PokrmSection() {
   const guests = useGuests().filter((g) => g.attending);
   const [picks, setPicks] = useState<Record<string, MealPick>>({});
   const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     try {
@@ -2321,13 +2341,16 @@ function PokrmSection() {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (loading) return;
     const fd = new FormData(e.currentTarget);
     const payload = guests.map((g) => ({
       guestId: g.id, name: g.name,
       meal: picks[g.id]?.mealKey ?? CONFIG.meals[0].key,
       kids: picks[g.id]?.kids ?? false,
     }));
+    setLoading(true);
     const r = await submitForm("pokrm", { meals: payload, hp: fd.get("hp") });
+    setLoading(false);
     if (r.ok) {
       setSent(true);
       try {
@@ -2335,8 +2358,8 @@ function PokrmSection() {
         window.localStorage.setItem(POKRM_DATA_KEY, JSON.stringify(picks));
       } catch { /* noop */ }
       markSectionChecked("pokrm");
-      toast.success("Power-up vybraný ⚡");
-    } else toast.error("Skús to prosím znova.");
+      toast.success("Power-up vybraný ⚡", { id: "pokrm" });
+    } else toast.error("Skús to prosím znova.", { id: "pokrm" });
   }
 
   return (
@@ -2453,8 +2476,12 @@ function PokrmSection() {
                 );
               })}
             </div>
-            <button type="submit" className="mt-6 inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]">
-              <Send className="h-4 w-4" /> Odoslať výber
+            <button
+              type="submit"
+              disabled={loading}
+              className="mt-6 inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)] disabled:opacity-60"
+            >
+              <Send className="h-4 w-4" /> {loading ? "Odosielam..." : "Odoslať výber"}
             </button>
           </div>
         </form>
@@ -2501,6 +2528,7 @@ function UbytovanieSection() {
   const guests = useGuests().filter((g) => g.attending);
   const [rooms, setRooms] = useState<RoomEntry[]>([]);
   const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
   const guestClickRef = useRef<{
     key: string;
@@ -2645,9 +2673,10 @@ function UbytovanieSection() {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (rooms.length === 0) { toast.error("Pridaj aspoň jednu izbu."); return; }
+    if (loading) return;
+    if (rooms.length === 0) { toast.error("Pridaj aspoň jednu izbu.", { id: "ubytovanie" }); return; }
     if (rooms.some((r) => !r.mainGuestId)) {
-      toast.error("Každá izba musí mať zvolenú hlavnú osobu.");
+      toast.error("Každá izba musí mať zvolenú hlavnú osobu.", { id: "ubytovanie" });
       return;
     }
     const fd = new FormData(e.currentTarget);
@@ -2660,7 +2689,9 @@ function UbytovanieSection() {
       cots: r.cots, extraBeds: r.extraBeds, pet: r.pet,
       price: roomPrice(r),
     }));
+    setLoading(true);
     const r = await submitForm("ubytovanie", { rooms: payload, totalPrice: total, night: "10.10.2026 → 11.10.2026", hp: fd.get("hp") });
+    setLoading(false);
     if (r.ok) {
       setSent(true);
       try {
@@ -2668,8 +2699,8 @@ function UbytovanieSection() {
         window.localStorage.setItem(UBYTOVANIE_DATA_KEY, JSON.stringify({ rooms }));
       } catch { /* noop */ }
       markSectionChecked("ubytovanie");
-      toast.success("HUB zvolený ✨");
-    } else toast.error("Skús to prosím znova.");
+      toast.success("Ďakujeme, tvoju voľbu si píšeme!", { id: "ubytovanie" });
+    } else toast.error("Skús to prosím znova.", { id: "ubytovanie" });
   }
 
   const dobryVediet = (
@@ -2888,8 +2919,12 @@ function UbytovanieSection() {
 
           {dobryVediet}
 
-          <button type="submit" className="inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]">
-            <Send className="h-4 w-4" /> Odoslať záujem
+          <button
+            type="submit"
+            disabled={loading}
+            className="inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)] disabled:opacity-60"
+          >
+            <Send className="h-4 w-4" /> {loading ? "Odosielam..." : "Odoslať záujem"}
           </button>
         </form>
       )}
@@ -3279,6 +3314,7 @@ function KontaktSection() {
   const meetHeartPos = (stickman.linePos + FOOTER_PARTNER_LINE_POS) / 2;
   const [notes, setNotes] = useState("");
   const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     try {
@@ -3298,12 +3334,15 @@ function KontaktSection() {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (loading) return;
     const fd = new FormData(e.currentTarget);
     if (!notes.trim()) {
-      toast.error("Napíš prosím poznámku.");
+      toast.error("Napíš prosím poznámku.", { id: "poznamka" });
       return;
     }
+    setLoading(true);
     const r = await submitForm("poznamka", { notes: notes.trim(), hp: fd.get("hp") });
+    setLoading(false);
     if (r.ok) {
       setSent(true);
       try {
@@ -3311,8 +3350,8 @@ function KontaktSection() {
         window.localStorage.setItem(KONTAKT_DATA_KEY, JSON.stringify({ notes: notes.trim() }));
       } catch { /* noop */ }
       markSectionChecked("kontakt");
-      toast.success("Poznámka odoslaná ✨");
-    } else toast.error("Skús to prosím znova.");
+      toast.success("Poznámka odoslaná ✨", { id: "poznamka" });
+    } else toast.error("Skús to prosím znova.", { id: "poznamka" });
   }
 
   return (
@@ -3390,9 +3429,10 @@ function KontaktSection() {
             </div>
             <button
               type="submit"
-              className="mt-4 inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]"
+              disabled={loading}
+              className="mt-4 inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)] disabled:opacity-60"
             >
-              <Send className="h-4 w-4" /> Odoslať
+              <Send className="h-4 w-4" /> {loading ? "Odosielam..." : "Odoslať"}
             </button>
           </>
         )}
@@ -3414,8 +3454,16 @@ function KontaktSection() {
           Natália &amp; Oto · 10.10.2026 · Brno
         </p>
         <p className="mt-2 font-hand text-lg text-[color:var(--paper)]/60">
-          Quest log done · Tešíme sa na Vás !!   
+          Quest log done · Tešíme sa na Vás !!
         </p>
+        <a
+          href="https://github.com/WhybCode/wedding_quest/commits/main/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 inline-block font-hand text-xs tracking-wide text-[color:var(--paper)]/20 transition-colors hover:text-[color:var(--paper)]/40"
+        >
+          Last updated {viteEnv("VITE_LAST_UPDATED", "19.07.2026")}
+        </a>
       </footer>
     </section>
   );
