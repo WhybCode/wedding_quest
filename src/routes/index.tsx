@@ -2352,8 +2352,33 @@ function PokrmSection() {
   function setPick(id: string, patch: Partial<MealPick>) {
     setPicks((p) => ({
       ...p,
-      [id]: { mealKey: p[id]?.mealKey ?? CONFIG.meals[0].key, kids: p[id]?.kids ?? false, ...patch },
+      [id]: { mealKey: p[id]?.mealKey ?? "", kids: p[id]?.kids ?? false, ...patch },
     }));
+  }
+
+  function resetPokrmPicks() {
+    setPicks({});
+  }
+
+  const mealClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function onMealClick(guestId: string, mealKey: string) {
+    const current = picks[guestId]?.mealKey ?? "";
+    if (current === mealKey) return; // už vybrané — čakáme na prípadný dvojklik
+    if (mealClickTimerRef.current) clearTimeout(mealClickTimerRef.current);
+    mealClickTimerRef.current = setTimeout(() => {
+      setPick(guestId, { mealKey });
+      mealClickTimerRef.current = null;
+    }, 280);
+  }
+
+  function onMealDoubleClick(guestId: string, mealKey: string) {
+    if (mealClickTimerRef.current) {
+      clearTimeout(mealClickTimerRef.current);
+      mealClickTimerRef.current = null;
+    }
+    const current = picks[guestId]?.mealKey ?? "";
+    if (current === mealKey) setPick(guestId, { mealKey: "" });
   }
 
   function editPokrm() {
@@ -2365,11 +2390,15 @@ function PokrmSection() {
     e.preventDefault();
     if (loading) return;
     const fd = new FormData(e.currentTarget);
-    const payload = guests.map((g) => ({
-      guestId: g.id, name: g.name,
-      meal: picks[g.id]?.mealKey ?? CONFIG.meals[0].key,
-      kids: picks[g.id]?.kids ?? false,
-    }));
+    // Len hostia s vybraným jedlom — ostatní môžu zostať bez voľby
+    const payload = guests
+      .filter((g) => Boolean(picks[g.id]?.mealKey))
+      .map((g) => ({
+        guestId: g.id,
+        name: g.name,
+        meal: picks[g.id]!.mealKey,
+        kids: picks[g.id]?.kids ?? false,
+      }));
     setLoading(true);
     const r = await submitForm("pokrm", { meals: payload, hp: fd.get("hp") });
     setLoading(false);
@@ -2447,13 +2476,24 @@ function PokrmSection() {
             </div>
           </div>
 
-          <div className="paper-card p-6 md:p-8">
+          <div className="paper-card relative p-6 md:p-8">
+            {Object.keys(picks).length > 0 ? (
+              <button
+                type="button"
+                onClick={resetPokrmPicks}
+                className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-md text-[color:var(--ink)]/50 hover:bg-[color:var(--bordo)]/10 hover:text-[color:var(--bordo)]"
+                title="Vymazať výber jedál"
+                aria-label="Vymazať výber jedál"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            ) : null}
             <h3 className="mb-5 font-marker text-sm uppercase tracking-widest text-[color:var(--turquoise)]">
               Voľba pre hostí
             </h3>
             <div className="space-y-3">
               {guests.map((g) => {
-                const pick = picks[g.id]?.mealKey ?? CONFIG.meals[0].key;
+                const pick = picks[g.id]?.mealKey ?? "";
                 const kids = picks[g.id]?.kids ?? false;
                 return (
                   <div
@@ -2465,24 +2505,20 @@ function PokrmSection() {
                     </div>
                     <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
                       {CONFIG.meals.map((m) => (
-                        <label
+                        <button
                           key={m.key}
-                          className={`flex-1 cursor-pointer rounded-full border-2 px-4 py-2 text-center font-hand text-sm transition sm:text-base ${
+                          type="button"
+                          onClick={() => onMealClick(g.id, m.key)}
+                          onDoubleClick={() => onMealDoubleClick(g.id, m.key)}
+                          title={pick === m.key ? "Dvojklikom odznačíš" : undefined}
+                          className={`flex-1 cursor-pointer rounded-full border-2 px-4 py-2 text-center font-hand text-sm transition select-none sm:text-base ${
                             pick === m.key
                               ? "border-[color:var(--bordo)] bg-[color:var(--gold)]/25 text-[color:var(--bordo-deep)]"
                               : "border-dashed border-[color:var(--ink)]/30 text-[color:var(--ink)] hover:border-[color:var(--bordo)]"
                           }`}
                         >
-                          <input
-                            type="radio"
-                            name={`meal-${g.id}`}
-                            value={m.key}
-                            checked={pick === m.key}
-                            onChange={() => setPick(g.id, { mealKey: m.key })}
-                            className="sr-only"
-                          />
                           {m.label}
-                        </label>
+                        </button>
                       ))}
                     </div>
                     <label className="inline-flex shrink-0 items-center gap-2 font-hand text-sm text-[color:var(--ink)] sm:w-32 sm:justify-end">
@@ -2794,9 +2830,10 @@ function UbytovanieSection() {
                   <button
                     type="button" onClick={() => removeRoom(r.id)}
                     aria-label="Odstrániť izbu"
-                    className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[color:var(--ink)]/60 hover:bg-[color:var(--bordo)]/10 hover:text-[color:var(--bordo)]"
+                    title="Odstrániť izbu"
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[color:var(--ink)]/50 hover:bg-[color:var(--bordo)]/10 hover:text-[color:var(--bordo)]"
                   >
-                    <Trash2 className="h-4 w-4" /> Odstrániť
+                    <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
 
