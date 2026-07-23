@@ -183,13 +183,18 @@ function useGuests(): Guest[] {
 }
 
 // ============ CHECKLIST ============
-const SECTIONS = [
+const SECTIONS: {
+  id: string;
+  label: string;
+  icon: typeof Check;
+  form?: boolean;
+}[] = [
   { id: "hero", label: "Poznač si termín", icon: CalendarIcon },
   { id: "program", label: "Naplánuj si deň", icon: MapPin },
   { id: "lokacie", label: "Naplánuj si cestu", icon: Car },
-  { id: "rsvp", label: "Potvrď účasť", icon: Check },
-  { id: "ubytovanie", label: "Rezervuj si izbu", icon: Sparkles },
-  { id: "pokrm", label: "Vyber si pokrm", icon: Utensils },
+  { id: "rsvp", label: "Potvrď účasť", icon: Check, form: true },
+  { id: "ubytovanie", label: "Rezervuj si izbu", icon: Sparkles, form: true },
+  { id: "pokrm", label: "Vyber si pokrm", icon: Utensils, form: true },
   { id: "dresscode", label: "Nachystaj si odev", icon: Shirt },
   { id: "dary", label: "Priprav dar", icon: Gift },
   { id: "den", label: "Uži si náš deň", icon: Music },
@@ -1294,12 +1299,29 @@ function ChecklistItem({
       <button
         type="button"
         onClick={() => onPick(s.id)}
-        className="flex-1 text-left font-hand text-lg leading-tight text-[color:var(--ink)]"
+        className="min-w-0 flex-1 text-left font-hand text-lg leading-tight text-[color:var(--ink)]"
         style={{ textDecoration: done ? "line-through" : "none" }}
       >
         {s.label}
       </button>
-      <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-[color:var(--bordo)] opacity-0 transition-opacity group-hover:opacity-100" />
+      {s.form ? (
+        <svg
+          viewBox="0 0 6 14"
+          className="h-3.5 w-2 shrink-0 text-[#a01820]"
+          style={{ transform: "rotate(12deg) translateY(-2px)" }}
+          aria-hidden
+        >
+          <path
+            d="M3 1.25v7.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.25"
+            strokeLinecap="round"
+          />
+          <circle cx="3" cy="12.25" r="1.35" fill="currentColor" />
+        </svg>
+      ) : null}
+      <ChevronRight className="h-4 w-4 shrink-0 text-[color:var(--bordo)] opacity-0 transition-opacity group-hover:opacity-100" />
     </div>
   );
 }
