@@ -9,13 +9,17 @@
  *
  * Deploy: Web app · Execute as: Me · Who has access: Anyone
  * Po úprave: Manage deployments → Edit → Version: New → Deploy
+ *
+ * Pozn.: getRange(row, column, numRows, numColumns) — 3. a 4. argument
+ *        sú POČTY riadkov/stĺpcov, nie posledný index.
  */
 
 var SHEET_ID = "";
 
-var COLOR_YES = "#1b7a3d"; // zelený text
-var COLOR_NO = "#c62828"; // červený text
-var COLOR_GRAY = "#9e9e9e"; // staršie / nahradené odpovede
+var COLOR_YES = "#1b7a3d";
+var COLOR_NO = "#c62828";
+var COLOR_GRAY = "#9e9e9e";
+var COLOR_BLACK = "#000000";
 
 function doPost(e) {
   try {
@@ -50,15 +54,12 @@ function doGet() {
 }
 
 // ─── RSVP ───────────────────────────────────────────────────────────
-// hlavicka: id, cas, osoba, telefon, odpoved
-// Opakovaná odpoveď tej istej kontaktnej osoby:
-//   - staršie riadky → sivý text
-//   - nové riadky → rovnaké id podľa mien z pôvodnej odpovede
 
 function writeRsvp_(ss, data) {
   var sheet = getOrCreateSheet_(ss, "RSVP");
   var headers = ["id", "cas", "osoba", "telefon", "odpoved"];
   ensureHeaders_(sheet, headers);
+  forceIdColumnFormat_(sheet);
 
   var guests = Array.isArray(data.guests) ? data.guests : [];
   if (guests.length === 0 && (data.name || data.mainPerson)) {
@@ -72,8 +73,8 @@ function writeRsvp_(ss, data) {
   var kontakt = contact_(data) || ((guests[0] && guests[0].name) || "");
 
   var prev = findBlocksByContact_(sheet, {
-    contactCol: 3, // osoba na 1. riadku bloku
-    blockStartCols: [2, 4, 5], // cas / telefon / odpoved
+    contactCol: 3,
+    blockStartCols: [2, 4, 5],
     idCol: 1,
     nameCol: 3,
     kontakt: kontakt,
@@ -101,9 +102,12 @@ function writeRsvp_(ss, data) {
   }
 
   var startRow = sheet.getLastRow() + 1;
-  sheet.getRange(startRow, 1, rows.length, headers.length).setValues(rows);
+  var range = sheet.getRange(startRow, 1, rows.length, headers.length);
+  range.setValues(rows);
+  range.setFontColor(COLOR_BLACK); // nové vždy čierne (setValues farbu nemení)
+  sheet.getRange(startRow, 1, rows.length, 1).setNumberFormat("0");
+  sheet.getRange(startRow, 2, rows.length, 1).setNumberFormat("@");
 
-  // farba TEXTU mena (nie pozadie bunky)
   sheet
     .getRange(startRow, 3, rows.length, 1)
     .setFontColor(yes ? COLOR_YES : COLOR_NO)
@@ -111,8 +115,6 @@ function writeRsvp_(ss, data) {
 }
 
 // ─── Ubytovanie ─────────────────────────────────────────────────────
-// hlavicka: id, cas, kontaktna osoba, typ izby, prizstelka, postielka, pes,
-//           cena izby, na koho, na izbe
 
 function writeUbytovanie_(ss, data) {
   var sheet = getOrCreateSheet_(ss, "Ubytovanie");
@@ -129,6 +131,7 @@ function writeUbytovanie_(ss, data) {
     "na izbe",
   ];
   ensureHeaders_(sheet, headers);
+  forceIdColumnFormat_(sheet);
 
   var rooms = Array.isArray(data.rooms) ? data.rooms : [];
   if (rooms.length === 0) return;
@@ -170,27 +173,30 @@ function writeUbytovanie_(ss, data) {
   }
 
   var startRow = sheet.getLastRow() + 1;
-  sheet.getRange(startRow, 1, rows.length, headers.length).setValues(rows);
+  var range = sheet.getRange(startRow, 1, rows.length, headers.length);
+  range.setValues(rows);
+  range.setFontColor(COLOR_BLACK);
+  sheet.getRange(startRow, 1, rows.length, 1).setNumberFormat("0");
+  sheet.getRange(startRow, 2, rows.length, 1).setNumberFormat("@");
 }
 
 // ─── Pokrm ──────────────────────────────────────────────────────────
-// hlavicka: id, cas, kontaktna osoba, osoba, volba, detska porcia
-// Opakovaná voľba: staršie riadky sivé, nové s pôvodnými id podľa osoby, čierny text
 
 function writePokrm_(ss, data) {
   var sheet = getOrCreateSheet_(ss, "Pokrm");
   var headers = ["id", "cas", "kontaktna osoba", "osoba", "volba", "detska porcia"];
   ensurePokrmHeaders_(sheet, headers);
+  forceIdColumnFormat_(sheet);
 
   var meals = Array.isArray(data.meals) ? data.meals : [];
   if (meals.length === 0) return;
 
   var kontakt = contact_(data);
   var prev = findBlocksByContact_(sheet, {
-    contactCol: 3, // kontaktna osoba
-    blockStartCols: [2, 3], // cas / kontakt
+    contactCol: 3,
+    blockStartCols: [2, 3],
     idCol: 1,
-    nameCol: 4, // osoba
+    nameCol: 4,
     kontakt: kontakt,
   });
 
@@ -220,10 +226,11 @@ function writePokrm_(ss, data) {
   var startRow = sheet.getLastRow() + 1;
   var range = sheet.getRange(startRow, 1, rows.length, headers.length);
   range.setValues(rows);
-  range.setFontColor("#000000"); // nové = čierne (nie sivé)
+  range.setFontColor(COLOR_BLACK);
+  sheet.getRange(startRow, 1, rows.length, 1).setNumberFormat("0");
+  sheet.getRange(startRow, 2, rows.length, 1).setNumberFormat("@");
 }
 
-/** Ak má starý Pokrm hlavičku bez id, doplní stĺpec vľavo. */
 function ensurePokrmHeaders_(sheet, headers) {
   var last = sheet.getLastRow();
   if (last === 0) {
@@ -241,7 +248,6 @@ function ensurePokrmHeaders_(sheet, headers) {
 }
 
 // ─── Poznámka ───────────────────────────────────────────────────────
-// hlavicka: cas, kontaktna osoba, poznamka
 
 function writePoznamka_(ss, data) {
   var sheet = getOrCreateSheet_(ss, "Poznámka");
@@ -258,7 +264,10 @@ function writePoznamka_(ss, data) {
     }
   }
 
-  sheet.appendRow([now_(), kontakt, data.notes || ""]);
+  var startRow = sheet.getLastRow() + 1;
+  sheet.getRange(startRow, 1, 1, headers.length).setValues([[now_(), kontakt, data.notes || ""]]);
+  sheet.getRange(startRow, 1, 1, headers.length).setFontColor(COLOR_BLACK);
+  sheet.getRange(startRow, 1).setNumberFormat("@");
 }
 
 // ─── helpers ────────────────────────────────────────────────────────
@@ -287,6 +296,7 @@ function ensureHeaders_(sheet, headers) {
   if (last === 0) {
     sheet.appendRow(headers);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold");
+    forceIdColumnFormat_(sheet);
     return;
   }
   var first = sheet.getRange(1, 1, 1, Math.max(headers.length, 1)).getValues()[0];
@@ -298,10 +308,12 @@ function ensureHeaders_(sheet, headers) {
   }
 }
 
-/**
- * Nájde všetky predchádzajúce bloky pre danú kontaktnú osobu.
- * Blok začína riadkom, kde je vyplnený aspoň jeden zo stĺpcov blockStartCols.
- */
+/** Stĺpec A = obyčajné číslo (nie dátum). */
+function forceIdColumnFormat_(sheet) {
+  var last = Math.max(sheet.getMaxRows(), 1);
+  sheet.getRange(1, 1, last, 1).setNumberFormat("0");
+}
+
 function findBlocksByContact_(sheet, opts) {
   var last = sheet.getLastRow();
   var result = {
@@ -314,7 +326,8 @@ function findBlocksByContact_(sheet, opts) {
   if (last < 2 || !opts.kontakt) return result;
 
   var width = Math.max(sheet.getLastColumn(), 1);
-  var data = sheet.getRange(2, 1, last, width).getValues();
+  var numRows = last - 1;
+  var data = sheet.getRange(2, 1, numRows, width).getValues();
   var blocks = [];
   var current = null;
 
@@ -323,7 +336,7 @@ function findBlocksByContact_(sheet, opts) {
     var isStart = false;
     for (var c = 0; c < opts.blockStartCols.length; c++) {
       var colIdx = opts.blockStartCols[c] - 1;
-      if (row[colIdx] !== "" && row[colIdx] != null) {
+      if (!isBlank_(row[colIdx])) {
         isStart = true;
         break;
       }
@@ -335,18 +348,28 @@ function findBlocksByContact_(sheet, opts) {
         start: i + 2,
         rows: [i + 2],
         contact: row[opts.contactCol - 1],
-        id: opts.idCol ? row[opts.idCol - 1] : "",
+        id: opts.idCol ? cellToId_(row[opts.idCol - 1]) : null,
         names: [],
       };
       if (opts.nameCol) {
         var n0 = row[opts.nameCol - 1];
-        if (n0) current.names.push({ name: n0, id: opts.idCol ? row[opts.idCol - 1] : "" });
+        if (n0) {
+          current.names.push({
+            name: n0,
+            id: opts.idCol ? cellToId_(row[opts.idCol - 1]) : null,
+          });
+        }
       }
     } else if (current) {
       current.rows.push(i + 2);
       if (opts.nameCol) {
         var n = row[opts.nameCol - 1];
-        if (n) current.names.push({ name: n, id: opts.idCol ? row[opts.idCol - 1] : "" });
+        if (n) {
+          current.names.push({
+            name: n,
+            id: opts.idCol ? cellToId_(row[opts.idCol - 1]) : null,
+          });
+        }
       }
     }
   }
@@ -358,31 +381,25 @@ function findBlocksByContact_(sheet, opts) {
   }
   if (matched.length === 0) return result;
 
-  // sivé všetky staršie bloky tej istej osoby
   var allRows = [];
   for (var m = 0; m < matched.length; m++) {
     allRows = allRows.concat(matched[m].rows);
-    var bid = Number(matched[m].id);
-    if (!isNaN(bid) && bid > 0) result.blockIds.push(bid);
+    if (matched[m].id != null && matched[m].id > 0) result.blockIds.push(matched[m].id);
   }
   allRows.sort(function (a, b) {
     return a - b;
   });
 
-  // id mapa z najnovšieho bloku (posledný match)
   var latest = matched[matched.length - 1];
   for (var k = 0; k < latest.names.length; k++) {
     var item = latest.names[k];
     var key = norm_(item.name);
-    if (key && item.id !== "" && item.id != null) result.nameToId[key] = Number(item.id);
+    if (key && item.id != null && !isNaN(item.id)) result.nameToId[key] = item.id;
   }
 
   result.rows = allRows;
   result.startRow = allRows[0];
   result.rowCount = allRows[allRows.length - 1] - allRows[0] + 1;
-
-  // ak riadky nie sú súvislé, sivíme po jednom
-  result.scattered = allRows;
   return result;
 }
 
@@ -414,13 +431,28 @@ function reuseOrNextId_(nameToId, name, sheet, idCol, usedIds) {
 function nextNumericId_(sheet, col) {
   var last = sheet.getLastRow();
   if (last < 2) return 1;
-  var vals = sheet.getRange(2, col, last, 1).getValues();
+  var vals = sheet.getRange(2, col, last - 1, 1).getValues();
   var max = 0;
   for (var i = 0; i < vals.length; i++) {
-    var n = Number(vals[i][0]);
-    if (!isNaN(n) && n > max) max = n;
+    var n = cellToId_(vals[i][0]);
+    if (n != null && n > max) max = n;
   }
   return max + 1;
+}
+
+/** Číslo id; ak Sheets bunka „zvrátila“ na dátum, vráť serial deň (1,2,3…). */
+function cellToId_(v) {
+  if (v === "" || v == null) return null;
+  if (Object.prototype.toString.call(v) === "[object Date]") {
+    var epoch = new Date(Date.UTC(1899, 11, 30));
+    return Math.round((v.getTime() - epoch.getTime()) / 86400000);
+  }
+  var n = Number(v);
+  return isNaN(n) ? null : n;
+}
+
+function isBlank_(v) {
+  return v === "" || v == null;
 }
 
 function norm_(v) {

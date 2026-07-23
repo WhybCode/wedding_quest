@@ -3239,6 +3239,7 @@ const FAQ = [
   { q: "Môžem prísť so psíkom?", a: "Do kostola a na hostinu ho prosím neber. Ak sa ti však v krajnom prípade nepodarí zohnať stráženie, môže byť za príplatok v hoteli - 500 Kč/noc, prípadne vo vedľajšej miestnosti v budove KUMSTu. Viac v leveli Hotel ala čik-čik domček." },
   { q: "Čo ak mám alergiu alebo intoleranciu alebo som vegetarián/ka?", a: "Akékoľvek svoje špeciálne diéty, požiadavky či ďalšie adaptácie pokrmu nám napíš v poznámke a my kuchyňu vopred upozorníme." },
   { q: "Na koho sa obrátiť?", a: "V núdzi napíš alebo zavolaj mladomanželom - Natálii či Otovi, ich kontakty sú v poslednom leveli." },
+  { q: "Koľko vychádza hotel na noc za jednu osobu ?", a: "Hradí sa cena na izbu, tak ako je uvedená vo formulári - necháme na vás ako si to podelíte podľa lôžok, medzi možnosťami je i jednolôžková izba." },
   { q: "Chýba tu nejaká otázka?", a: "Napíš nám ju do sekcie poznámka pod našimi kontaktmi." },
 ];
 
@@ -3312,6 +3313,10 @@ function KontaktSection() {
   const stickman = useContext(StickmanContext);
   const meetClose = isStickmanMeetClose(stickman.sectionId, stickman.linePos);
   const meetHeartPos = (stickman.linePos + FOOTER_PARTNER_LINE_POS) / 2;
+  const guests = useGuests();
+  const rsvpName =
+    (guests.find((g) => g.id === "main") ?? guests[0])?.name?.trim() || "";
+  const [contactName, setContactName] = useState("");
   const [notes, setNotes] = useState("");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -3320,12 +3325,21 @@ function KontaktSection() {
     try {
       if (window.localStorage.getItem(KONTAKT_SENT_KEY) === "1") setSent(true);
       const raw = window.localStorage.getItem(KONTAKT_DATA_KEY);
+      let savedName = "";
       if (raw) {
-        const data = JSON.parse(raw) as { notes?: string };
+        const data = JSON.parse(raw) as { notes?: string; contactName?: string };
         if (typeof data.notes === "string") setNotes(data.notes);
+        if (typeof data.contactName === "string") savedName = data.contactName.trim();
       }
+      setContactName(savedName || getMainRsvpName());
     } catch { /* noop */ }
   }, []);
+
+  // Keď host dokončí RSVP neskôr, predvyplň meno (ak ešte nie je vlastné).
+  useEffect(() => {
+    if (!rsvpName) return;
+    setContactName((prev) => prev.trim() || rsvpName);
+  }, [rsvpName]);
 
   function editKontakt() {
     setSent(false);
@@ -3336,18 +3350,31 @@ function KontaktSection() {
     e.preventDefault();
     if (loading) return;
     const fd = new FormData(e.currentTarget);
+    const name = rsvpName || contactName.trim();
+    if (!name) {
+      toast.error("Napíš prosím svoje meno — aby sme vedeli, od koho poznámka je.", { id: "poznamka" });
+      return;
+    }
     if (!notes.trim()) {
       toast.error("Napíš prosím poznámku.", { id: "poznamka" });
       return;
     }
     setLoading(true);
-    const r = await submitForm("poznamka", { notes: notes.trim(), hp: fd.get("hp") });
+    const r = await submitForm("poznamka", {
+      notes: notes.trim(),
+      mainPerson: name,
+      name,
+      hp: fd.get("hp"),
+    });
     setLoading(false);
     if (r.ok) {
       setSent(true);
       try {
         window.localStorage.setItem(KONTAKT_SENT_KEY, "1");
-        window.localStorage.setItem(KONTAKT_DATA_KEY, JSON.stringify({ notes: notes.trim() }));
+        window.localStorage.setItem(
+          KONTAKT_DATA_KEY,
+          JSON.stringify({ notes: notes.trim(), contactName: name }),
+        );
       } catch { /* noop */ }
       markSectionChecked("kontakt");
       toast.success("Poznámka odoslaná ✨", { id: "poznamka" });
@@ -3417,7 +3444,23 @@ function KontaktSection() {
           </div>
         ) : (
           <>
-            <div>
+            {!rsvpName ? (
+              <div>
+                <label className="form-label text-sm">Tvoje meno</label>
+                <input
+                  type="text"
+                  value={contactName}
+                  onChange={(e) => setContactName(e.target.value)}
+                  placeholder="Aby sme vedeli, od koho poznámka je"
+                  autoComplete="name"
+                  className="mt-1 w-full rounded-md border border-[color:var(--ink)]/30 bg-white/60 px-3 py-2 text-[color:var(--ink)] placeholder:text-[color:var(--ink)]/40 focus:outline-none focus:ring-2 focus:ring-[color:var(--gold)]"
+                />
+                <p className="mt-1 font-hand text-sm text-[color:var(--ink)]/55">
+                  RSVP ešte nemáš vyplnené — meno sem prosím napíš ručne.
+                </p>
+              </div>
+            ) : null}
+            <div className={rsvpName ? undefined : "mt-4"}>
               <label className="form-label text-sm">Poznámka</label>
               <textarea
                 value={notes}
