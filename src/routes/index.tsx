@@ -107,7 +107,7 @@ const CONFIG = {
     {
       key: "nevesta",
       label: "Nevestina voľba",
-      desc: "Grilované kuracie špízy, grilované zemiaky, šmakózna zelenina, humus a tahini.",
+      desc: "Grilované kuracie suvlaki, grilované zemiaky, šmakózna zelenina, humus a tahini.",
     },
     {
       key: "zenich",
@@ -2446,10 +2446,19 @@ function PokrmSection() {
           <input type="text" name="hp" tabIndex={-1} autoComplete="off" className="hidden" aria-hidden />
 
           <div className="paper-card overflow-visible p-5 md:py-6 md:pl-6 md:pr-0">
-            <div className="grid gap-5 md:grid-cols-[minmax(0,0.95fr)_min(50%,360px)] md:items-start">
+            <div className="grid gap-5 md:grid-cols-[minmax(0,0.95fr)_min(50%,360px)] md:items-center">
               <div className="overflow-visible">
                 <p className="font-hand text-lg leading-snug text-[color:var(--ink)]/80">
-                  Aby si si svadobnú hostinu vychutnal, zvoľ si čo ti je po chuti...
+                 Aby si svadobnú hostinu vychutnal/a, pre catering sme vybavili šikovné ručičky z našej obľúbenej{" "}
+                  <a
+                    href="https://paprikabrno.cz/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[color:var(--gold)] transition hover:brightness-95"
+                  >
+                    Reštaurácie Paprika
+                  </a>{" "}
+                  so stredomorskou kuchyňou. Nižšie si zvoľ, čo ti je po chuti...
                 </p>
                 <ul className="mt-3.5 space-y-2.5 overflow-visible">
                   {CONFIG.meals.map((m) => (
@@ -2466,11 +2475,11 @@ function PokrmSection() {
                   ))}
                 </ul>
               </div>
-              <div className="overflow-hidden rounded-lg md:rounded-r-none">
+              <div className="overflow-hidden rounded-lg md:mt-0.5 md:rounded-r-none">
                 <img
                   src={sitePath("photos/menu.jpg")}
                   alt="Menu svadobného grilovania"
-                  className="w-full border-2 border-dashed border-[color:var(--gold)]/40 object-cover shadow-sm md:min-h-[280px] md:justify-self-end md:rounded-l-lg md:rounded-r-none md:border-r-0"
+                  className="w-full border-2 border-dashed border-[color:var(--gold)]/40 object-cover object-center shadow-sm md:min-h-[280px] md:justify-self-end md:rounded-l-lg md:rounded-r-none md:border-r-0"
                 />
               </div>
             </div>
