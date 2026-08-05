@@ -565,6 +565,12 @@
   padding-bottom: 1.5rem;
 }
 
+.program-trail--afterparty {
+  min-height: 36rem;
+  max-width: 38rem;
+  padding-bottom: 0.5rem;
+}
+
 .program-trail-svg {
   position: absolute;
   inset: 0;
@@ -763,6 +769,13 @@
   padding-inline: 1.35rem;
 }
 
+.program-trail-label--fit {
+  min-width: 0;
+  width: max-content;
+  max-width: min(22rem, calc(100vw - 7rem));
+  padding: 0.45rem 0.85rem;
+}
+
 @media (min-width: 768px) {
   .program-trail-time {
     font-size: 1.5rem;
@@ -774,6 +787,10 @@
     min-height: 62rem;
     max-width: 100%;
     overflow: visible;
+  }
+
+  .program-trail--afterparty {
+    min-height: 40rem;
   }
 
   .program-trail-label,

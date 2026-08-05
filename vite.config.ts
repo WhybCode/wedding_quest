@@ -59,7 +59,7 @@ export default defineConfig({
     server: { entry: "server" },
     prerender: { enabled: true },
     spa: { enabled: true },
-    pages: [{ path: "/" }],
+    pages: [{ path: "/" }, { path: "/afterparty" }],
     router: {
       ...(routerBasepath ? { basepath: routerBasepath } : {}),
     },
