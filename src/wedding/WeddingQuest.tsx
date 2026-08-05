@@ -104,7 +104,9 @@ const CONFIG = {
     email: "info@continentalbrno.cz",
   },
   qrPayment: sitePath("photos/QR_money.png"),
-  photoUploadUrl: "https://drive.google.com/drive/folders/1jXGB4rHGBWKfxwCfU1s5JpDxc_RhFUaW?usp=drive_link",
+  qrPhotos: sitePath("photos/QR_photos.png"),
+  photoUploadUrl: "https://drive.google.com/drive/folders/1HX-JrCV7PUJ9KLZ3z5_yQj88bmHFaXPN?usp=sharing",
+  photoUploadUrlAfterparty: "https://drive.google.com/drive/folders/1jXGB4rHGBWKfxwCfU1s5JpDxc_RhFUaW?usp=drive_link",
   // Trojica jedál na výber pre hostí
   meals: [
     {
@@ -3167,19 +3169,9 @@ function UbytovanieSection() {
   return (
     <Section id="ubytovanie" level={levelFor("ubytovanie")} title="Hotel ala čik-čik domček">
       <p className="font-hand text-2xl text-[color:var(--gold)] mb-8 max-w-[50.4rem] leading-relaxed">
-        {hotelOptional ? (
-          <>
-            Ubytovanie nie je povinné — ak zostávaš v Brne, máme predbežne dohodnutý Hotel Continental na noc
-            <span className="font-normal text-[color:var(--paper)]"> zo soboty 10.10.2026 na nedeľu 11.10.2026</span>.
-            Záujem o izbu môžeš poslať nižšie; kontaktná osoba bude hlavná osoba z prvej izby.
-          </>
-        ) : (
-          <>
-            Pre hostí máme predbežne dohodnuté ubytovanie v Hoteli Continental na noc
-            <span className="font-normal text-[color:var(--paper)]"> zo soboty 10.10.2026 na nedeľu 11.10.2026</span>. Poprosíme ťa o potvrdenie
-            rezervácie pre všetky osoby, za ktoré rezerváciu vypĺňaš. Ak ťa náš výber neoslovil, môžeš si nájsť ubytovanie po vlastnej osi.
-          </>
-        )}
+        Pre hostí máme predbežne dohodnuté ubytovanie v Hoteli Continental na noc
+        <span className="font-normal text-[color:var(--paper)]"> zo soboty 10.10.2026 na nedeľu 11.10.2026</span>. Poprosíme ťa o potvrdenie
+        rezervácie pre všetky osoby, za ktoré rezerváciu vypĺňaš. Ak ťa náš výber neoslovil, môžeš si nájsť ubytovanie po vlastnej osi.
       </p>
 
       {hotelOptional && !expanded && !sent ? (
@@ -3219,9 +3211,9 @@ function UbytovanieSection() {
 const DRESSCODE_PALETTE = [
   { color: "#3a1418", cells: [[0, 0], [0, 1], [1, 0], [1, 1]] }, // O
   { color: "#8b1e1e", cells: [[0, 1], [0, 2], [1, 0], [1, 1]] }, // S
-  { color: "#c8942c", cells: [[0, 0], [1, 0], [2, 0], [0, 1]] }, // J
+  { color: "#e9a318", cells: [[0, 0], [1, 0], [2, 0], [0, 1]] }, // J
   { color: "#f5c542", cells: [[0, 1], [1, 0], [1, 1], [1, 2]] }, // T
-  { color: "#4bb3a7", cells: [[0, 0], [1, 0], [2, 0], [3, 0]] }, // I
+  { color: "#73d7de", cells: [[0, 0], [1, 0], [2, 0], [3, 0]] }, // I
   { color: "#c78bbf", cells: [[0, 0], [1, 0], [2, 0], [2, 1]] }, // L
 ] as const;
 
@@ -3378,24 +3370,61 @@ function DenSection() {
 
 // ============ FOTKY ============
 function FotkySection() {
+  const afterparty = activeVariant === "afterparty";
+  const uploadUrl = afterparty ? CONFIG.photoUploadUrlAfterparty : CONFIG.photoUploadUrl;
+
+  if (afterparty) {
+    return (
+      <Section id="fotky" level={levelFor("fotky")} title="Foto save point">
+        <div className="paper-card max-w-2xl p-6 md:p-8">
+          <p className="font-hand text-2xl text-[color:var(--bordo)]">
+            Zachytil si moment či screenshot, ktorý by nemal zapadnút v galérii telefónu?
+          </p>
+          <p className="mt-2 text-[color:var(--ink)]/80 leading-relaxed">
+            Nahraj ho sem! Tvoríme centralizovanú kolekciu legendárnych fotiek a videí,
+            aby sme si mohli kompletne vyskladať náš deň.
+          </p>
+          <a
+            href={uploadUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-5 inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]"
+          >
+            <Camera className="h-4 w-4" /> Nahraj fotky
+          </a>
+        </div>
+      </Section>
+    );
+  }
+
   return (
     <Section id="fotky" level={levelFor("fotky")} title="Foto save point">
-      <div className="paper-card max-w-2xl p-6 md:p-8">
-        <p className="font-hand text-2xl text-[color:var(--bordo)]">
-          Zachytil si moment či screenshot, ktorý by nemal zapadnút v galérii telefónu?
-        </p>
-        <p className="mt-2 text-[color:var(--ink)]/80 leading-relaxed">
-          Nahraj ho sem! Tvoríme centralizovanú kolekciu legendárnych fotiek a videí,
-          aby sme si mohli kompletne vyskladať náš deň.
-        </p>
-        <a
-          href={CONFIG.photoUploadUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-5 inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]"
-        >
-          <Camera className="h-4 w-4" /> Nahraj fotky
-        </a>
+      <div className="grid gap-6 md:grid-cols-2">
+        <div className="paper-card p-6">
+          <p className="font-hand text-2xl text-[color:var(--bordo)]">
+            Zachytil si moment či screenshot, ktorý by nemal zapadnút v galérii telefónu?
+          </p>
+          <p className="mt-2 text-[color:var(--ink)]/80 leading-relaxed">
+            Nahraj ho sem! Tvoríme centralizovanú kolekciu legendárnych fotiek a videí,
+            aby sme si mohli kompletne vyskladať náš deň.
+          </p>
+          <a
+            href={uploadUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-5 inline-flex items-center gap-2 rounded-full bg-[color:var(--bordo)] px-6 py-3 font-marker text-sm uppercase tracking-wide text-[color:var(--gold)]"
+          >
+            <Camera className="h-4 w-4" /> Nahraj fotky
+          </a>
+        </div>
+        <div className="paper-card p-6 text-center">
+          <p className="font-marker text-xs uppercase text-[color:var(--bordo)]">Alebo naskenuj</p>
+          <div className="mt-3 grid place-items-center">
+            <div className="h-48 w-48 overflow-hidden rounded-md">
+              <img src={CONFIG.qrPhotos} alt="QR kód na nahrávanie fotiek" className="qr-code-img" />
+            </div>
+          </div>
+        </div>
       </div>
     </Section>
   );
@@ -3449,8 +3478,8 @@ function BrnoTipGroup({
         }
       : tone === "dresscode-gold"
         ? {
-            border: "border-[#c8942c]/80",
-            badgeBorder: "border-[#c8942c]/80",
+            border: "border-[#e9a318]/80",
+            badgeBorder: "border-[#e9a318]/80",
           }
         : {
             border: "border-[color:var(--blush)]/70",

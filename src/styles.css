@@ -58,7 +58,7 @@
   --paper: oklch(0.96 0.03 85);
   --ink: oklch(0.22 0.04 40);
   --gold: oklch(0.82 0.15 85);
-  --turquoise: oklch(0.75 0.13 190);
+  --turquoise: #73d7de;
   --blush: oklch(0.78 0.09 350);
   --blush-vivid: oklch(0.66 0.14 350);
 
