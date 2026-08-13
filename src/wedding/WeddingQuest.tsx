@@ -2114,6 +2114,17 @@ function LokacieSection() {
 
   return (
     <Section id="lokacie" level={levelFor("lokacie")} title="Lokácie checkpointov">
+      <p className="mb-8 max-w-[50.4rem] font-hand text-2xl leading-relaxed text-[color:var(--gold)]">
+        Checkpointy nášho veľkého dňa sa nachádzajú pekne v <span className="text-[color:var(--gold)]/40">(bermudskom)</span> trojuholníku, len s krátkymi vzdialenosťami medzi nimi.
+        Každá z ciest sa dá jednoducho prejsť za 10 minút pomalou chôdzou.
+        <br />
+        Pri presune z hotelu ku kostolu odporúčame <span className="text-[color:var(--paper)]">spoločnú chôdzu so svadobčanmi</span>, a pre separátne nočné odchody do hotela kľudne využite komfortný <span className="text-[color:var(--paper)]">teleport pomocou taxi služieb</span>.
+        {!friends && (
+          <>{" "}
+            Premiestnenia z kostola na hostinu sa však obávať nemusíte — máme pre vás <span className="text-[color:var(--paper)]">prekvapko</span> spojené s krátkou „ochutnávkou“ Brna.
+          </>
+        )}
+      </p>
       <div className="grid gap-6 md:grid-cols-3">
         {locations.map((l, i) => (
           <div key={l.name} className="paper-card p-5" style={{ transform: `rotate(${(i - 1) * 0.6}deg)` }}>
@@ -2158,6 +2169,10 @@ function LokacieSection() {
           customImage={CONFIG.mapCustomImage ? sitePath(CONFIG.mapCustomImage.replace(/^\//, "")) : undefined}
         />
       </div>
+      <p className="mt-6 max-w-[50.4rem] font-hand text-base leading-relaxed text-[color:var(--paper)]/65 md:text-lg">
+        * Pre potrebu presunu pomocou auta odporúčame využiť taxi služby aby si sa vyhol sa problému parkovania mimo parkoviska hotela.
+        <br />Pre tento účel odporúčame aplikáciu Bolt, Uber, Liftago, či prípadne zavolať na dispečing City Taxi 14 004.
+      </p>
     </Section>
   );
 }
@@ -3535,15 +3550,17 @@ const FAQ: FaqItem[] = [
   { q: "Môžem so sebou vziať +1?", a: "Tento deň slávime v kruhu tých bezprostredne najbližších. Preto na každej pozvánke sú oslovení práve tí, s ktorými na svadobnej hostine rátame a radi uvidíme." },
   // { q: "Môžem prísť sám/sama?", a: "Samozrejme! Ak nemáš +1, príď sám/sama — na obrade, počas hostiny alebo na tanečnom parkete si určite parťáka nájdeš." },
   { q: "Čo s deťmi?", a: "Deti sú vítané, len stačí ich uviesť v RSVP formulári, aby sme s nimi rátali. Avšak uvažujte tak, aby ste si vedeli náš veľký deň i vy čo najviac užiť. Teda ak máte niekoho na stráženie, odporúčame túto možnosť využiť." },
-  { q: "Kedy končí oslava?", a: "Oficiálny program končí odchodom DJ o 02:00 a pokračuje dozvukmi. KUMST nás (dúfajme) nechá tancovať dokiaľ nám to nohy dovolia, ale nie je zlý nápad sa pred odjazdom domov trochu aj vyspať." },
-  { q: "Ako sa dostaneme z KUMSTu naspäť do hotela?", a: "Pre menej unavených a mladších je to 10 minútová prechádzka. Ostatným odporúčame využiť taxi ako Bolt, Wolt alebo Uber na rýchly prevoz." },
-  { q: "Ako sa presunieme z hotelu ku kostolu?", a: "Peši, vzdialenosť z hotelu Continental je 10 minút pomalou chôdzou. Pre unavených odporúčame odvoz taxikom či alternatívou. "},
-  { q: "Aký je dresscode a je záväzný?", a: "Nami navrhované farby od nikoho striktne nebudeme vyžadovať, ide skôr o náladu a dôležité bude cítiť sa dobre popčas celej tancovačky až do 02:00. Viac info v leveli Dresscode." },
+  { q: "Kedy končí oslava?", a: "Oficiálny program končí odchodom DJ o 02:00 a pokračuje dozvukmi. KUMST nás (dúfajme) nechá tancovať dokiaľ nám to nohy dovolia, ale nie je zlý nápad sa pred odjazdom domov trochu aj vyspať. Mladomanželia sa na svadobnú noc odoberú najneskôr o 04:00." },
+  { q: "Ako sa dostaneme z KUMSTu naspäť do hotela?", a: "Pre menej unavených a mladších je to 10 minútová prechádzka. Ostatným odporúčame využiť taxi - ak by si s tým potreboval/a pomoc, pri lúčení s mladomanželmi sa o ňu neboj popýtať." },
+  { q: "Ako sa presunieme z hotelu ku kostolu?", a: "Peši, vzdialenosť z hotelu Continental je 10 minút pomalou chôdzou. Tých, ktorým sa ťažšie kráča, môžte odviesť autom priamo ku kostolu alebo využiť taxi služby a vyhnúť sa tak problému s parkovaním."},
+  { q: "Odporúčanie na taxi v Brne?", a: "Najvýhodnejší presun je možný pomocou alternatívnych taxi služieb vo forme applikácie Bolt, Uber či Liftago. Ak predsa uprednostňuješ kontakt na taxi cez dispečing, skús City Taxi na 14 004. Presun medzi svatobnými lokáciami sa hýbe približne okolo 100Kč."},
+  { q: "Ako sa dostaneme z hotelu ku kostolu?", a: "Kto sa bude chcieť pokočíkovať dieťa alebo sa jednoducho prejsť, ku sále od kostola to je opäť len krátka 10 minútová prechádzka, pre tých zvyšných mám však nachystané prekvapenie ;)"},
+  { q: "Aký je dresscode a je záväzný?", a: "Nami navrhované farby od nikoho striktne nebudeme vyžadovať, ide skôr o náladu a dôležité bude cítiť sa dobre počas celej tancovačky až do rána. Viac info v leveli Dresscode." },
   { q: "Ako postupovať s darom?", a: "Radi prijmeme finančný príspevok na naše ďalšie kroky formou obálky, QR platby alebo prevodu. Detaily nájdete pod levelom Loot & kvety." },
   { q: "Môžem prísť so psíkom?", a: "Do kostola a na hostinu ho prosím neber. Ak sa ti však v krajnom prípade nepodarí zohnať stráženie, môže byť za príplatok v hoteli - 500 Kč/noc, prípadne vo vedľajšej miestnosti v budove KUMSTu. Viac v leveli Hotel ala čik-čik domček." },
   { q: "Čo ak mám alergiu alebo intoleranciu alebo som vegetarián/ka?", a: "Akékoľvek svoje špeciálne diéty, požiadavky či ďalšie adaptácie pokrmu nám napíš v poznámke a my kuchyňu vopred upozorníme." },
-  { q: "Na koho sa obrátiť?", a: "V núdzi napíš alebo zavolaj mladomanželom - Natálii či Otovi, ich kontakty sú v poslednom leveli." },
   { q: "Koľko vychádza hotel na noc za jednu osobu ?", a: "Hradí sa cena na izbu, tak ako je uvedená vo formulári - necháme na vás ako si to podelíte podľa lôžok, medzi možnosťami je i jednolôžková izba." },
+  { q: "Ako urobím zmenu vo formulári?", a: "Jednoducho, vyplň svoje údaje rovnako ako prvýkrát, a len urob potrebnú zmenu. V tesne blízkosti termínu svadby tak však, prosím, rob len minimálne a radšej na to priamo varuj i mladomanželov." },
   {
     q: "Prečo v Brne?",
     a: [
@@ -3553,7 +3570,8 @@ const FAQ: FaqItem[] = [
       "Pretože mladomanželia v Brne žijú a radi by ti takto predstavili i kúsok ich sveta.",
     ],
   },
-  { q: "Chýba tu nejaká otázka?", a: "Napíš nám ju do sekcie poznámka pod našimi kontaktmi." },
+  { q: "Na koho sa obrátiť?", a: "V prípade potreby napíš alebo zavolaj priamo mladomanželom - Natálii či Otovi, ich kontakty sú v poslednom leveli." },
+  { q: "Chýba tu nejaká otázka?", a: "Napíš nám ju do sekcie poznámka pod našimi kontaktmi a my sa o to už postaráme." },
 ];
 
 function pickFaqAnswer(a: string | string[], last?: string) {
